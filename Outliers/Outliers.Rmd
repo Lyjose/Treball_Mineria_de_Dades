@@ -1,0 +1,63 @@
+---
+title: "Outliers"
+author: "Guillermo II de Prusia"
+date: "2025-09-30"
+output: html_document
+---
+
+```{r}
+library(readr)
+data <- read_csv("C:/Users/miguel.prada.leon/Downloads/train.csv", col_types = cols(...1 = col_skip()))
+
+for(i in 1:ncol(data)){
+  if(is.character(data[[i]])==TRUE){
+    data[[i]] = as.factor(data[[i]])
+  }
+}
+
+data$HasCrCard <- as.factor(data$HasCrCard)
+data$IsActiveMember <- as.factor(data$IsActiveMember)
+data$SavingsAccountFlag <- as.factor(data$SavingsAccountFlag)
+data$Exited <- as.factor(data$Exited)
+data <- data[,-18]
+```
+
+```{r Prepo}
+library(dlookr)
+
+diagnose_numeric(data)
+diagnose_category(data)
+library(ggplot2)
+colnames(data)
+data_num <- data[, sapply(data, is.numeric)]
+data_categ <- data[, sapply(data, is.factor)]
+```
+
+
+```{r Boxplot}
+par(mfrow = c(1,1))
+for(i in 1:length(data_num)){
+  boxplot(data_num[i])
+  
+}
+```
+
+```{r Z score}
+variable<-colnames(data_num)
+for(i in 1:length(data_num)){
+  valorEscalado <- scale(data_num[, variable[i]])
+hist(valorEscalado)
+title(variable[i])
+}
+
+```
+
+
+
+
+
+```{r Distancia Mahalanobis}
+distancia_mahalanobis <- mahalanobis(data_num, colMeans(data_num), cov(data_num))
+plot(density(distancia_mahalanobis))
+```
+
