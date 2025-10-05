@@ -30,7 +30,7 @@ visdat::vis_dat(data)
 ```
 Veiem només tenim dos tipus de variables (Factor i numèriques) però que tenim una barbaritat de NAs a les nostres variables. Anem a arreglar-ho.
 
-# Imputació de valors faltants Univariants:
+# Imputació de valors faltants:
 
 Mirarem primerament si hi han valors extrems que s'hagin de considerar NAs per haver estat incorrectament afegits a la base de dades:
 
@@ -39,16 +39,23 @@ summary(data)
 ```
 Busquem valors tant extrems que siguin irreals i s'hagin de considerar faltants; algú amb $500$ anys, una satifacció del client de $13$ cuan la variable es mou entre el $0$ i el $10$, ingresos negatius o variables binàries amb valors diferents a $1$ o $0$. Per aquesta base de dades no hem trobat valors d'aquest tipus, per tant començarem directament amb la imputació dels valors que ja tenim faltants.
 
-
-Primerament comprovarem la aleatòrietat de les dades faltants amb el test de Little per a MCAR:
+Comprovarem la aleatòrietat de les dades faltants amb el test de Little per a MCAR:
 
 ```{r}
 naniar::mcar_test(data)
 ```
-Comprovem que per un P-valor de `r naniar::mcar_test(data)$p.value` els nostres Missings are Completly generated At Random.
+Veiem que per un P-valor de `r naniar::mcar_test(data)$p.value` els nostres Missings are Completly generated At Random. Llavors no ens haurem de preocupar de trobar patrons per els cuals hagin sigut generats. 
 
+Comencem amb la imputació principalment per tres mètodes; **MICE**, **Veïns Propers** i **Bosc Aleatòri**. D'aquesta forma tindrem 3 possibles bases de dades que podem utilitzar per al model predictiu i podrem escollir quin dels tres mètodes funcionarà millor, fent que tinguem un *F1 score* major.
 
-Podrem fer la primera imputació de les dades faltants a través de l'algorisme MICE (Multiple Imputation by Chained Equations):
+## MICE:
+
+Podrem fer la primera imputació de les dades faltants a través de l'algorisme MICE (Multiple Imputation by Chained Equations). 
+
+- Utilitzarem el mètode *pmm* (Predictive Mean Matching), per les variables numèriques, excepte *ID*.
+- El mètode *logreg* (Regressió Logística), per les variables binàries, excepte *Exited*.
+- Y per últim el mètode *polyreg* (Regressió Logística Politòmica), per les variables categòriques amb més d'un factor.
+
 
 ```{r, results=FALSE, warning=FALSE, echo=TRUE, include=FALSE}
 set.seed(28657)
@@ -69,7 +76,7 @@ data_for_imputation_num <- data |>
 mice_output_num <- mice::mice(data_for_imputation_num, method = "pmm", m = 10)
 imputed_data_num <- mice::complete(mice_output_num)
 
-data_imputed <- complete_columns(data, imputed_data_num)
+data_imputed_MICE <- complete_columns(data, imputed_data_num)
 ```
 
 
@@ -82,7 +89,7 @@ data_for_imputation_fac <- data |>
 mice_output_fac <- mice::mice(data_for_imputation_fac, method = "polyreg", m = 10)
 imputed_data_fac <- mice::complete(mice_output_fac)
 
-data_imputed <- complete_columns(data_imputed, imputed_data_fac)
+data_imputed_MICE <- complete_columns(data_imputed_MICE, imputed_data_fac)
 ```
 
 ```{r, results=FALSE, warning=FALSE, echo=TRUE, include=FALSE}
@@ -94,7 +101,7 @@ data_for_imputation_bin <- data |>
 mice_output_bin <- mice::mice(data_for_imputation_bin, method = "logreg", m = 10)
 imputed_data_bin <- mice::complete(mice_output_bin)
 
-data_imputed <- complete_columns(data_imputed, imputed_data_bin)
+data_imputed_MICE <- complete_columns(data_imputed_MICE, imputed_data_bin)
 ```
 
 
@@ -140,13 +147,14 @@ mass_before_after <- function(before, after) {
     levels_in_order <- lapply(mass_df_before, levels) |> unlist()
     
     mass_df <- bind_rows(mass_df_before, mass_df_after) |>
-        mutate(imputation = factor(imputation)) |>
-        tidyr::pivot_longer(!imputation, names_to = "variable") |>
-        filter(!is.na(value)) |>
-        group_by(imputation, variable) |> 
-        reframe(prop = proportions(table(value)), category = names(prop)) |>
-        mutate(category = factor(category, levels = levels_in_order)) |>
-        filter(prop > 0)
+      mutate(imputation = factor(imputation)) |>
+      tidyr::pivot_longer(!imputation, names_to = "variable") |>
+      filter(!is.na(value)) |>
+      group_by(imputation, variable) |> 
+      reframe(prop = proportions(table(value)), category = names(prop)) |>
+      group_by(variable) |> 
+      mutate(category = factor(category, levels = levels(mass_df_before[[unique(variable)]]))) |>
+      filter(prop > 0)
     
     ggplot(mass_df, aes(x = category, y = prop, color = imputation, fill = imputation)) +
         facet_wrap(~variable, scales = "free") +
@@ -163,14 +171,124 @@ mass_before_after <- function(before, after) {
 ```
 
 ```{r}
-density_before_after(data, data_imputed)
+density_before_after(data, data_imputed_MICE)
+```
+
+Sembla que les deistribucions de les dades faltants és clavada a la de les dades originals, cosa molt positiva però les freqüències són majors per a les dades faltants. Aquest fet no serà un problema per al nostre objectiu predictiu.
+
+```{r}
+mass_before_after(data, data_imputed_MICE)
+```
+
+Per a les variables factor, tant binàries com politòmiques, tenim que s'ha imputat correctíssimament tant les deistribucions com les freqüències. L'única variable a menyprear serà *Surname* que al ser-hi una variable amb molts nivells, no ho fa correctament i obviarem en el nostre model predictiu, no ens sembla que sigui rellevant per a predir si marxarà o no una persona del nostre banc.
+
+
+## Veïns Propers:
+
+Imputarem els valors faltants dels 7 veïns (Número ) més propers, utilitzarem la mitjana d'aquests veïns per imputar les variables numèriques i utilitzarem la moda d'aquest veïns per les variables categòriques.
+
+```{r}
+data_for_imputation <- cbind(data_for_imputation_bin, data_for_imputation_fac, data_for_imputation_num) 
+
+
+set.seed(28657)
+imputed_data <- VIM::kNN(
+    as.data.frame(data_for_imputation), 
+    k = 7, imp_var = FALSE)
+
+data_imputed_KNN <- complete_columns(data_for_imputation, imputed_data)
+```
+
+Podrem comprarar-ho de la mateixa forma que amb l'algorisme anterior:
+
+```{r}
+density_before_after(data, data_imputed_KNN)
+```
+
+Veiem que ara les imputacions de dades faltants no segueixen les distribucions de les dades orignials, això significa que no han sigut correctament imputades i podriem descartar aquest mètode d'imputació, almenys per les variables numériques.
+
+Veiem com ho fa per les varibles categòriques:
+
+```{r}
+mass_before_after(data, data_imputed_KNN)
+```
+
+Per aquestes veiem que si han sigut millors les imputacions, tot i que sempre hi ha un nivell que queda sobrerepresentat en comparació amb la resta distorcionant lleugerament les distribucions. Ho haurem de tenir en compte a l'hora d'escollir model.
+
+## Bosc Aleatòri:
+
+```{r, results=FALSE, warning=FALSE, echo=TRUE, include=FALSE}
+set.seed(28657)
+forest_output <- missForest::missForest(
+    as.data.frame(data_for_imputation),
+    maxiter = 10, ntree = 20,
+    variablewise = TRUE, verbose = TRUE, 
+)
+
+data_imputed_FOREST <- complete_columns(data, forest_output$ximp)
 ```
 
 ```{r}
-# mass_before_after(data, data_imputed)
+bind_cols(
+    variable = names(forest_output$ximp),
+    tipus_error = names(forest_output$OOBerror),
+    error = round(forest_output$OOBerror, 2)
+) |>
+    arrange(tipus_error, -error) |>
+    knitr::kable(col.names = c("Variable", "Tipus d'Error", "Error"))
+
+```
+
+```{r}
+density_before_after(data, data_imputed_FOREST)
+```
+
+Veiem que aquest mètode és el pitjor dels utilitzats prèviament, sembla ajuntar tots els valors imputats al centre, al voltant de la mitjana de cada variable en una mena de distribució normal forzada que no ens ajudarà pas en el nostre objectiu.
+
+```{r}
+mass_before_after(data, data_imputed_FOREST)
+```
+
+Encara que es cert que en les variables categòriques aconsegueix una imputació molt semblant al *MICE* i millor que amb els *K-Nearest Neighbors*.
+
+## Imputació per Bootstrap:
+
+Amb la funció *aregImpute()* podrem fer imputació de les dades faltants basada en regressions amb splines. Utilitza regressió aditiva amb splines per a variables numèriques i regressió logística per a les categòriques.
+
+```{r, results=FALSE, message=FALSE, warning=FALSE, echo=TRUE, include=FALSE}
+set.seed(28657)
+
+areg_output <- Hmisc::aregImpute(
+    data = data_for_imputation,
+    formula = ~ Gender + HasCrCard + IsActiveMember + SavingsAccountFlag + EducationLevel + LoanStatus + Geography + CustomerSegment + MaritalStatus + Tenure + Balance + TransactionFrequency + Age + EstimatedSalary + AvgTransactionAmount + CreditScore + NetPromoterScore + DigitalEngagementScore ,
+    nk = 5
+)
 ```
 
 
+```{r, results=FALSE, message=FALSE, warning=FALSE, echo=TRUE, include=FALSE}
+imputed_data_BOOT <- areg_output$imputed
+data_imputed_AREG <- data
+
+for (col in names(imputed_data_BOOT)) {
+  if (is.factor(data[[col]])) {
+    levels_col <- levels(data[[col]])
+    data_imputed_AREG[[col]][is.na(data[[col]])] <- 
+      factor(levels_col[ imputed_data_BOOT[[col]][, 5L] ], levels = levels_col)
+  } else {
+    data_imputed_AREG[[col]][is.na(data[[col]])] <- imputed_data_BOOT[[col]][, 5L]
+  }
+}
+```
+
+```{r}
+density_before_after(data, data_imputed_AREG)
+```
+
+
+```{r}
+mass_before_after(data, data_imputed_AREG)
+```
 
 
 
