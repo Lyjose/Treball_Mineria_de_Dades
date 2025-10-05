@@ -2,7 +2,7 @@
 title: "Outliers"
 author: "Guillermo II de Prusia"
 date: "2025-09-30"
-output: html_document
+output: pdf_document
 ---
 
 ```{r}
