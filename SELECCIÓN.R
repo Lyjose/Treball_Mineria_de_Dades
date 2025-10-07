@@ -17,7 +17,7 @@ library(patchwork)
 numeric_vars <- setdiff(names(data_imputed_MICE)[sapply(data, is.numeric)], "Exited")
 
 num_plots <- lapply(numeric_vars, function(var) {
-  ggplot(data_imputed_MICE, aes(x = Exited, y = .data_imputed_MICE[[var]], fill = Exited)) +
+  ggplot(data_imputed_MICE, aes(x = Exited, y = .data[[var]], fill = Exited)) +
     geom_boxplot() +
     labs(title = var, x = NULL, y = NULL) +
     theme_minimal() +
@@ -35,7 +35,7 @@ num_panel
 cat_vars <- setdiff(names(data_imputed_MICE)[sapply(data_imputed_MICE, is.factor)], "Exited")
 
 cat_plots <- lapply(cat_vars, function(var) {
-  ggplot(data_imputed_MICE, aes(x = .data_imputed_MICE[[var]], fill = Exited)) +
+  ggplot(data_imputed_MICE, aes(x = .data[[var]], fill = Exited)) +
     geom_bar(position = "fill") +
     scale_y_continuous(labels = percent_format()) +
     labs(title = var, x = NULL, y = NULL) +
@@ -88,4 +88,5 @@ lasso_coefs$Variable <- rownames(lasso_coefs)
 lasso_coefs <- lasso_coefs[order(-abs(lasso_coefs$Estimate)), ]  # ordenar por magnitud
 
 print(lasso_coefs)
+
 
