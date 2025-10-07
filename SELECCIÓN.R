@@ -14,10 +14,10 @@ library(patchwork)
 #====================================================================
 
 # Boxplots 
-numeric_vars <- setdiff(names(data)[sapply(data, is.numeric)], "Exited")
+numeric_vars <- setdiff(names(data_imputed_MICE)[sapply(data, is.numeric)], "Exited")
 
 num_plots <- lapply(numeric_vars, function(var) {
-  ggplot(data, aes(x = Exited, y = .data[[var]], fill = Exited)) +
+  ggplot(data_imputed_MICE, aes(x = Exited, y = .data_imputed_MICE[[var]], fill = Exited)) +
     geom_boxplot() +
     labs(title = var, x = NULL, y = NULL) +
     theme_minimal() +
@@ -32,10 +32,10 @@ num_panel
 
 
 # Barplots 
-cat_vars <- setdiff(names(data)[sapply(data, is.factor)], "Exited")
+cat_vars <- setdiff(names(data_imputed_MICE)[sapply(data_imputed_MICE, is.factor)], "Exited")
 
 cat_plots <- lapply(cat_vars, function(var) {
-  ggplot(data, aes(x = .data[[var]], fill = Exited)) +
+  ggplot(data_imputed_MICE, aes(x = .data_imputed_MICE[[var]], fill = Exited)) +
     geom_bar(position = "fill") +
     scale_y_continuous(labels = percent_format()) +
     labs(title = var, x = NULL, y = NULL) +
@@ -60,9 +60,6 @@ vif(modelo_glm)
 
 
 ## LASSO (L1)
-# ============================
-# 🧠 2️⃣ Preparar X (predictores) e Y (respuesta)
-# ============================
 # Crea matriz de diseño (sin intercept)
 x <- model.matrix(Exited ~ ., data = data_imputed_MICE[,-c(7,18)])[, -1]
 
@@ -82,9 +79,7 @@ cv_lasso <- cv.glmnet(
 lambda_opt <- cv_lasso$lambda.min
 cat("Lambda óptimo seleccionado:", lambda_opt, "\n")
 
-# ============================
-# 📈 4️⃣ Coeficientes del modelo óptimo
-# ============================
+
 coef_matrix <- coef(cv_lasso, s = "lambda.min")
 lasso_coefs <- as.data.frame(as.matrix(coef_matrix))
 colnames(lasso_coefs) <- "Estimate"
@@ -93,3 +88,4 @@ lasso_coefs$Variable <- rownames(lasso_coefs)
 lasso_coefs <- lasso_coefs[order(-abs(lasso_coefs$Estimate)), ]  # ordenar por magnitud
 
 print(lasso_coefs)
+
