@@ -1,0 +1,89 @@
+---
+title: "Outliers"
+author: "Guillermo II de Prusia"
+date: "2025-09-30"
+output: pdf_document
+---
+
+
+
+
+#Primero se han de imputar los datos
+
+```{r}
+library(readr)
+data<-data_imputed
+
+
+data <- data[,-18]
+```
+
+```{r Prepo}
+install.packages("dlookr")
+#library(dlookr)
+
+#diagnose_numeric(data)
+#diagnose_category(data)
+library(ggplot2)
+colnames(data)
+data_num <- data[, sapply(data, is.numeric)]
+data_categ <- data[, sapply(data, is.factor)]
+```
+
+
+```{r Boxplot}
+par(mfrow = c(1,1))
+for(i in 1:length(data_num)){
+  boxplot(data_num[i])
+  title(colnames(data)[i])
+}
+#cambiar color
+```
+
+```{r Z score}
+for(i in 1:length(data_num)){
+  valorEscalado <- scale(data_num[, variable[i]])
+hist(valorEscalado,main=colnames(data)[i])
+#title(colnames(data)[i])
+}
+
+```
+
+
+
+
+
+```{r Distancia Mahalanobis}
+distancia_mahalanobis <- mahalanobis(data_num, colMeans(data_num), cov(data_num))
+plot(density(distancia_mahalanobis))
+cutoff <- qchisq(p = 0.99, df = ncol(data_num))
+data_num[distancia_mahalanobis>cutoff, ]
+data_num <- data_num[order(distancia_mahalanobis, decreasing = TRUE),]
+par(mfrow=c(1,1))
+hist(distancia_mahalanobis)
+umbral <- 25
+data_num[, "outlier"] <- (distancia_mahalanobis > umbral)
+
+(quienes <- which(data_num[, "outlier"] == TRUE))
+data<-data[-quienes,]
+```
+
+
+```{r Mahalanobis robusto, ver que falla}
+
+```
+
+
+```{r LOF}
+install.packages("DMwR2")
+library(DMwR2)
+library(dplyr)
+
+outlier.scores <- lofactor(data_num[, colnames(data_num)], k = 5)
+par(mfrow=c(1,1))
+plot(density(outlier.scores))
+outlier.scores
+outliers <- order(outlier.scores, decreasing=T)
+outliers <- order(outlier.scores, decreasing=T)[1:5]
+```
+
