@@ -260,7 +260,7 @@ mass_before_after(data, data_imputed_FOREST)
 Encara que es cert que en les variables categòriques aconsegueix una imputació molt semblant al *MICE* i millor que amb els *K-Nearest Neighbors*.
 
 ```{r}
-save(data_imputed_FOREST, file = "C:/Users/arnau.gomez/Desktop/Treball_Mineria_de_Dades/Bases_de_dades/data_NA_imputed_FOREST.RData")
+save(data_imputed_FOREST, file = "C:/Users/Asus/Desktop/Quarto/Mineria_de_Datos/Treball_Mineria_de_Dades/Bases_de_dades/data_NA_imputed_FOREST.RData")
 ```
 
 
@@ -294,15 +294,49 @@ for (col in names(imputed_data_BOOT)) {
 }
 ```
 
+
 ```{r}
-density_before_after(data, data_imputed_AREG)
+summary(data_imputed_AREG)
+```
+
+
+
+```{r}
+data2 <- data |>
+  select(!c(Surname))
+
+data2$ComplaintsCount <- as.factor(data2$ComplaintsCount)
+data2$NumOfProducts <- as.factor(data2$NumOfProducts)
+
+data_for_imputation_AREG <- data2 |>
+  select(ComplaintsCount, NumOfProducts)
+
+areg_output_fac <- mice::mice(data_for_imputation_AREG, method = "polyreg", m = 10)
+imputed_data_areg <- mice::complete(areg_output_fac)
+
+data_imputed_AREG <- complete_columns(data_imputed_AREG, imputed_data_areg)
+
+data_imputed_AREG <- data_imputed_AREG |>
+  select(!c(Surname))
+```
+```{r}
+summary(data_imputed_AREG)
+```
+
+
+
+```{r}
+density_before_after(data2, data_imputed_AREG)
 ```
 
 
 ```{r}
-mass_before_after(data, data_imputed_AREG)
+mass_before_after(data2, data_imputed_AREG)
 ```
 
+```{r}
+save(data_imputed_AREG, file = "C:/Users/Asus/Desktop/Quarto/Mineria_de_Datos/Treball_Mineria_de_Dades/Bases_de_dades/data_NA_imputed_AREG.RData")
+```
 
 
 
