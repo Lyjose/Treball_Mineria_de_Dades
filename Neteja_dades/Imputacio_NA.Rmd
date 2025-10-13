@@ -182,6 +182,10 @@ mass_before_after(data, data_imputed_MICE)
 
 Per a les variables factor, tant binàries com politòmiques, tenim que s'ha imputat correctíssimament tant les deistribucions com les freqüències. L'única variable a menyprear serà *Surname* que al ser-hi una variable amb molts nivells, no ho fa correctament i obviarem en el nostre model predictiu, no ens sembla que sigui rellevant per a predir si marxarà o no una persona del nostre banc.
 
+```{r}
+save(data_imputed_MICE, file = "C:/Users/arnau.gomez/Desktop/Treball_Mineria_de_Dades/Bases_de_dades/data_NA_imputed_MICE.RData")
+```
+
 
 ## Veïns Propers:
 
@@ -214,6 +218,10 @@ mass_before_after(data, data_imputed_KNN)
 ```
 
 Per aquestes veiem que si han sigut millors les imputacions, tot i que sempre hi ha un nivell que queda sobrerepresentat en comparació amb la resta distorcionant lleugerament les distribucions. Ho haurem de tenir en compte a l'hora d'escollir model.
+
+```{r}
+save(data_imputed_KNN, file = "C:/Users/arnau.gomez/Desktop/Treball_Mineria_de_Dades/Bases_de_dades/data_NA_imputed_KNN.RData")
+```
 
 ## Bosc Aleatòri:
 
@@ -250,6 +258,11 @@ mass_before_after(data, data_imputed_FOREST)
 ```
 
 Encara que es cert que en les variables categòriques aconsegueix una imputació molt semblant al *MICE* i millor que amb els *K-Nearest Neighbors*.
+
+```{r}
+save(data_imputed_FOREST, file = "C:/Users/arnau.gomez/Desktop/Treball_Mineria_de_Dades/Bases_de_dades/data_NA_imputed_FOREST.RData")
+```
+
 
 ## Imputació per Bootstrap:
 
