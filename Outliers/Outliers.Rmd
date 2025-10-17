@@ -7,7 +7,22 @@ output: pdf_document
 
 ```{r}
 library(readr)
-data <- read_csv("C:/Users/miguel.prada.leon/Downloads/train.csv", col_types = cols(...1 = col_skip()))
+library(dplyr)
+library(tibble)
+library(ggplot2)
+library(knitr)    
+library(tidyr)
+library(dlookr)
+library(dplyr)
+```
+############################# KNN ###############################################
+
+
+```{r }
+
+
+load("C:/Users/miguel.prada.leon/Downloads/data_NA_imputed_KNN.RData")
+data <- data_imputed_KNN
 
 for(i in 1:ncol(data)){
   if(is.character(data[[i]])==TRUE){
@@ -18,19 +33,18 @@ for(i in 1:ncol(data)){
 data$HasCrCard <- as.factor(data$HasCrCard)
 data$IsActiveMember <- as.factor(data$IsActiveMember)
 data$SavingsAccountFlag <- as.factor(data$SavingsAccountFlag)
-data$Exited <- as.factor(data$Exited)
-data <- data[,-18]
+#data$Exited <- as.factor(data$Exited)
+#data <- subset(data, select = -Surname)
 ```
 
 ```{r Prepo}
-library(dlookr)
-
 diagnose_numeric(data)
 diagnose_category(data)
-library(ggplot2)
 colnames(data)
 data_num <- data[, sapply(data, is.numeric)]
 data_categ <- data[, sapply(data, is.factor)]
+varNum<-colnames(data_num)
+varCateg<-colnames(data_categ)
 ```
 
 
@@ -44,6 +58,7 @@ for(i in 1:length(data_num)){
 
 ```{r Z score}
 variable<-colnames(data_num)
+umbral<-vector(length=11)
 for(i in 1:length(data_num)){
   valorEscalado <- scale(data_num[, variable[i]])
 hist(valorEscalado)
@@ -60,4 +75,267 @@ title(variable[i])
 distancia_mahalanobis <- mahalanobis(data_num, colMeans(data_num), cov(data_num))
 plot(density(distancia_mahalanobis))
 ```
+
+```{r}
+distancia_mahalanobis <- mahalanobis(scale(data[, varNum]),
+                                     colMeans(scale(data[, varNum])),
+                                     cov(scale(data[, varNum])))
+
+umbral <- qchisq(0.95, df = length(varNum))  # dante va dir 95%
+
+outliers.M <- which(distancia_mahalanobis > umbral)
+cat("Nombre d'outliers detectats:", length(outliers.M), "\n")
+
+```
+```{r eval=FALSE, include=FALSE}
+
+outlier.scores <- lofactor(data[, varNum], k = 5)
+par(mfrow=c(1,1))
+plot(density(outlier.scores))
+outlier.scores
+
+outliers.LOF <- order(outlier.scores, decreasing=T)
+outliers.LOF <- outliers.LOF[1:250] #el 5% de 5000 obs
+```
+############################# MICE ###############################################
+```{r}
+
+load("C:/Users/miguel.prada.leon/Downloads/data_NA_imputed_MICE.RData")
+data <- data_imputed_MICE
+
+for(i in 1:ncol(data)){
+  if(is.character(data[[i]])==TRUE){
+    data[[i]] = as.factor(data[[i]])
+  }
+}
+
+data$HasCrCard <- as.factor(data$HasCrCard)
+data$IsActiveMember <- as.factor(data$IsActiveMember)
+data$SavingsAccountFlag <- as.factor(data$SavingsAccountFlag)
+data$Exited <- as.factor(data$Exited)
+data <- subset(data, select = -Surname)
+```
+
+```{r Prepo}
+diagnose_numeric(data)
+diagnose_category(data)
+colnames(data)
+data_num <- data[, sapply(data, is.numeric)]
+data_categ <- data[, sapply(data, is.factor)]
+varNum<-colnames(data_num)
+varCateg<-colnames(data_categ)
+```
+
+
+```{r Boxplot}
+par(mfrow = c(1,1))
+for(i in 1:length(data_num)){
+  boxplot(data_num[i])
+  
+}
+```
+
+```{r Z score}
+variable<-colnames(data_num)
+umbral<-vector(length=11)
+for(i in 1:length(data_num)){
+  valorEscalado <- scale(data_num[, variable[i]])
+hist(valorEscalado)
+title(variable[i])
+}
+
+```
+
+
+
+
+
+```{r Distancia Mahalanobis}
+distancia_mahalanobis <- mahalanobis(data_num, colMeans(data_num), cov(data_num))
+plot(density(distancia_mahalanobis))
+```
+
+```{r}
+distancia_mahalanobis <- mahalanobis(scale(data[, varNum]),
+                                     colMeans(scale(data[, varNum])),
+                                     cov(scale(data[, varNum])))
+
+umbral <- qchisq(0.95, df = length(varNum))  # dante va dir 95%
+
+outliers.M <- which(distancia_mahalanobis > umbral)
+cat("Nombre d'outliers detectats:", length(outliers.M), "\n")
+
+```
+
+```{r eval=FALSE, include=FALSE}
+
+outlier.scores <- lofactor(data[, varNum], k = 5)
+par(mfrow=c(1,1))
+plot(density(outlier.scores))
+outlier.scores
+
+outliers.LOF <- order(outlier.scores, decreasing=T)
+outliers.LOF <- outliers.LOF[1:250] #el 5% de 5000 obs
+```
+
+############################# AREG ###############################################
+```{r}
+
+load("C:/Users/miguel.prada.leon/Downloads/data_NA_imputed_AREG.RData")
+data <- data_imputed_AREG
+
+for(i in 1:ncol(data)){
+  if(is.character(data[[i]])==TRUE){
+    data[[i]] = as.factor(data[[i]])
+  }
+}
+
+data$HasCrCard <- as.factor(data$HasCrCard)
+data$IsActiveMember <- as.factor(data$IsActiveMember)
+data$SavingsAccountFlag <- as.factor(data$SavingsAccountFlag)
+data$Exited <- as.factor(data$Exited)
+```
+
+```{r Prepo}
+diagnose_numeric(data)
+diagnose_category(data)
+colnames(data)
+data_num <- data[, sapply(data, is.numeric)]
+data_categ <- data[, sapply(data, is.factor)]
+varNum<-colnames(data_num)
+varCateg<-colnames(data_categ)
+```
+
+
+```{r Boxplot}
+par(mfrow = c(1,1))
+for(i in 1:length(data_num)){
+  boxplot(data_num[i])
+  
+}
+```
+
+```{r Z score}
+variable<-colnames(data_num)
+umbral<-vector(length=11)
+for(i in 1:length(data_num)){
+  valorEscalado <- scale(data_num[, variable[i]])
+hist(valorEscalado)
+title(variable[i])
+}
+
+```
+
+
+
+
+
+```{r Distancia Mahalanobis}
+distancia_mahalanobis <- mahalanobis(data_num, colMeans(data_num), cov(data_num))
+plot(density(distancia_mahalanobis))
+```
+
+```{r}
+distancia_mahalanobis <- mahalanobis(scale(data[, varNum]),
+                                     colMeans(scale(data[, varNum])),
+                                     cov(scale(data[, varNum])))
+
+umbral <- qchisq(0.95, df = length(varNum))  # dante va dir 95%
+
+outliers.M <- which(distancia_mahalanobis > umbral)
+cat("Nombre d'outliers detectats:", length(outliers.M), "\n")
+
+```
+
+```{r eval=FALSE, include=FALSE}
+
+outlier.scores <- lofactor(data[, varNum], k = 5)
+par(mfrow=c(1,1))
+plot(density(outlier.scores))
+outlier.scores
+
+outliers.LOF <- order(outlier.scores, decreasing=T)
+outliers.LOF <- outliers.LOF[1:250] #el 5% de 5000 obs
+```
+
+############################# FOREST ###############################################
+```{r}
+load("C:/Users/miguel.prada.leon/Downloads/data_NA_imputed_FOREST.RData")
+data <- data_imputed_FOREST
+
+for(i in 1:ncol(data)){
+  if(is.character(data[[i]])==TRUE){
+    data[[i]] = as.factor(data[[i]])
+  }
+}
+
+data$HasCrCard <- as.factor(data$HasCrCard)
+data$IsActiveMember <- as.factor(data$IsActiveMember)
+data$SavingsAccountFlag <- as.factor(data$SavingsAccountFlag)
+data$Exited <- as.factor(data$Exited)
+data <- subset(data, select = -Surname)
+```
+
+```{r Prepo}
+diagnose_numeric(data)
+diagnose_category(data)
+colnames(data)
+data_num <- data[, sapply(data, is.numeric)]
+data_categ <- data[, sapply(data, is.factor)]
+varNum<-colnames(data_num)
+varCateg<-colnames(data_categ)
+```
+
+
+```{r Boxplot}
+par(mfrow = c(1,1))
+for(i in 1:length(data_num)){
+  boxplot(data_num[i])
+  
+}
+```
+
+```{r Z score}
+variable<-colnames(data_num)
+umbral<-vector(length=11)
+for(i in 1:length(data_num)){
+  valorEscalado <- scale(data_num[, variable[i]])
+hist(valorEscalado)
+title(variable[i])
+}
+
+```
+
+
+
+
+
+```{r Distancia Mahalanobis}
+distancia_mahalanobis <- mahalanobis(data_num, colMeans(data_num), cov(data_num))
+plot(density(distancia_mahalanobis))
+```
+
+```{r}
+distancia_mahalanobis <- mahalanobis(scale(data[, varNum]),
+                                     colMeans(scale(data[, varNum])),
+                                     cov(scale(data[, varNum])))
+
+umbral <- qchisq(0.95, df = length(varNum))  # dante va dir 95%
+
+outliers.M <- which(distancia_mahalanobis > umbral)
+cat("Nombre d'outliers detectats:", length(outliers.M), "\n")
+
+```
+
+```{r eval=FALSE, include=FALSE}
+
+outlier.scores <- lofactor(data[, varNum], k = 5)
+par(mfrow=c(1,1))
+plot(density(outlier.scores))
+outlier.scores
+
+outliers.LOF <- order(outlier.scores, decreasing=T)
+outliers.LOF <- outliers.LOF[1:250] #el 5% de 5000 obs
+```
+
 
