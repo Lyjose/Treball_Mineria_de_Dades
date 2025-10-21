@@ -1,0 +1,82 @@
+library(caret)
+library(klaR)
+library(smotefamily)
+library(MLmetrics)
+
+
+set.seed(123)
+data = data_imputed_AREG[,-17]
+
+Index=sample(1:nrow(data), size = nrow(data)*0.8)
+dataTrain=data[-Index, ]
+dataTest=data[Index, ]
+# Reetiquetar la variable objectiu
+dataTrain$Exited <- factor(dataTrain$Exited, levels = c(0,1), labels = c("No", "Yes"))
+dataTest$Exited  <- factor(dataTest$Exited,  levels = c(0,1), labels = c("No", "Yes"))
+
+#FUNCIÓ F1 
+f1 <- function(data, lev = NULL, model = NULL) {
+  f1_val <- F1_Score(y_pred = data$pred, y_true = data$obs, positive = lev[1])
+  c(F1 = f1_val)
+}
+
+# Control del model amb F1 i SMOTE
+control <- trainControl(
+  method = "repeatedcv",
+  number = 10,
+  repeats = 3,
+  classProbs = TRUE,
+  summaryFunction = f1,
+)
+
+# Grid d'hiperparàmetres
+grid <- expand.grid(
+  usekernel = c(TRUE, FALSE),
+  fL = c(0, 0.5, 1),
+  adjust = c(0.5, 1, 1.5)
+)
+
+# Entrenament
+modelo_nb <- train(
+  y = dataTrain$Exited,
+  x = dataTrain[, 1:20],
+  method = "nb",
+  trControl = control,
+  tuneGrid = grid,
+  metric = "F1"
+)
+
+print(modelo_nb) 
+# Com kernel TRUE i fL = 0 dona millors resultats, optimitzo grid de només de adjust
+
+grid <- expand.grid(
+  usekernel = TRUE,
+  fL = 0,
+  adjust = c(1.5,2,4,6)
+)
+
+modelo_nb2 <- train(
+  y = dataTrain$Exited,
+  x = dataTrain[, 1:20],
+  method = "nb",
+  trControl = control,
+  tuneGrid = grid,
+  metric = "F1"
+)
+
+print(modelo_nb2) 
+
+
+####### Prediccions sobre el test amb el millor model trobat ####### 
+predictions <- predict(modelo_nb2, newdata = dataTest,type="prob")
+head(predictions) #dona probabilitat
+
+predictions <- predict(modelo_nb2, newdata = dataTest,type="raw")
+head(predictions) #dona la predicció
+
+
+#######   Matriu de confusió  ####### 
+
+# Ara sí, matriu de confusió
+cm <- confusionMatrix(predictions, dataTest$Exited,positive="Yes")
+cm
