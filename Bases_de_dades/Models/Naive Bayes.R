@@ -35,7 +35,7 @@ control <- trainControl(
 grid <- expand.grid(
   usekernel = c(TRUE, FALSE),
   laplace = c(0, 0.5, 1),
-  adjust = c(0.5, 1, 1.5)
+  adjust = c(0, 0.5, 1, 1.5)
 )
 
 # Entrenamiento inicial
@@ -71,7 +71,12 @@ print(modelo_nb2)
 
 # Predicciones (selecciona automaticamente los mejores parametros)
 pred_class <- predict(modelo_nb2, newdata = dataTest, type = "raw")
-pred_prob  <- predict(NB_def, newdata = dataTest, type = "prob")
-
+pred_prob  <- predict(modelo_nb2, newdata = dataTest, type = "prob")
 cm <- confusionMatrix(pred_class, dataTest$Exited, positive = "Yes")
 print(cm)
+
+
+# Esto es una mierda, se puede hacer tb tuning del llindar
+probs <- predict(modelo_nb2, newdata = dataTest, type = "prob")[, "Yes"]
+preds <- ifelse(probs > 0.2, "Yes", "No")
+confusionMatrix(factor(preds, levels=c("No","Yes")), dataTest$Exited, positive="Yes")
