@@ -8,6 +8,7 @@ output: pdf_document
 ```{r}
 library(readr)
 library(dplyr)
+library(VIM)
 data <- read_csv("train.csv", col_types = cols(...1 = col_skip()))
 
 for(i in 1:ncol(data)){
@@ -271,9 +272,12 @@ Amb la funció *aregImpute()* podrem fer imputació de les dades faltants basada
 ```{r, results=FALSE, message=FALSE, warning=FALSE, echo=TRUE, include=FALSE}
 set.seed(28657)
 
+data_for_imputation$ComplaintsCount <- as.factor(data_for_imputation$ComplaintsCount)
+data_for_imputation$NumOfProducts <- as.factor(data_for_imputation$NumOfProducts)
+
 areg_output <- Hmisc::aregImpute(
     data = data_for_imputation,
-    formula = ~ Gender + HasCrCard + IsActiveMember + SavingsAccountFlag + EducationLevel + LoanStatus + Geography + CustomerSegment + MaritalStatus + Tenure + Balance + TransactionFrequency + Age + EstimatedSalary + AvgTransactionAmount + CreditScore + NetPromoterScore + DigitalEngagementScore ,
+    formula = ~ Gender + HasCrCard + IsActiveMember + SavingsAccountFlag + EducationLevel + LoanStatus + Geography + CustomerSegment + MaritalStatus + Tenure + Balance + TransactionFrequency + Age + EstimatedSalary + AvgTransactionAmount + CreditScore + NetPromoterScore + DigitalEngagementScore + ComplaintsCount + NumOfProducts,
     nk = 5
 )
 ```
@@ -281,6 +285,8 @@ areg_output <- Hmisc::aregImpute(
 
 ```{r, results=FALSE, message=FALSE, warning=FALSE, echo=TRUE, include=FALSE}
 imputed_data_BOOT <- areg_output$imputed
+data$ComplaintsCount <- as.factor(data$ComplaintsCount)
+data$NumOfProducts <- as.factor(data$NumOfProducts)
 data_imputed_AREG <- data
 
 for (col in names(imputed_data_BOOT)) {
@@ -302,36 +308,16 @@ summary(data_imputed_AREG)
 
 
 ```{r}
-data2 <- data |>
-  select(!c(Surname))
-
-data2$ComplaintsCount <- as.factor(data2$ComplaintsCount)
-data2$NumOfProducts <- as.factor(data2$NumOfProducts)
-
-data_for_imputation_AREG <- data2 |>
-  select(ComplaintsCount, NumOfProducts)
-
-areg_output_fac <- mice::mice(data_for_imputation_AREG, method = "polyreg", m = 10)
-imputed_data_areg <- mice::complete(areg_output_fac)
-
-data_imputed_AREG <- complete_columns(data_imputed_AREG, imputed_data_areg)
-
-data_imputed_AREG <- data_imputed_AREG |>
-  select(!c(Surname))
-```
-```{r}
-summary(data_imputed_AREG)
-```
-
-
-
-```{r}
-density_before_after(data2, data_imputed_AREG)
+density_before_after(data, data_imputed_AREG)
 ```
 
 
 ```{r}
-mass_before_after(data2, data_imputed_AREG)
+data_imputed_AREG_draw <- data_imputed_AREG |>
+  select(!Surname)
+data_draw <- data |>
+  select(!Surname)
+mass_before_after(data_draw, data_imputed_AREG_draw)
 ```
 
 ```{r}
