@@ -201,7 +201,7 @@ imputed_data <- VIM::kNN(
     as.data.frame(data_for_imputation), 
     k = 7, imp_var = FALSE)
 
-data_for_imputation <- cbind(data_for_imputation, data$ID, data$Surname, data$Exited)
+data_for_imputation <- cbind(data_for_imputation, "ID" = data$ID, "Surname" = data$Surname, "Exited" = data$Exited)
 
 data_imputed_KNN <- complete_columns(data_for_imputation, imputed_data)
 ```
