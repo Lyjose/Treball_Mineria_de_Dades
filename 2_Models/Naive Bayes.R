@@ -94,5 +94,5 @@ submission <- data.frame(
   Exited = pred_test
 )
 
-write.csv(submission, "submission_nb.csv", row.names = FALSE)
+write.csv(submission, "submission_nb_nosmote.csv", row.names = FALSE)
 
