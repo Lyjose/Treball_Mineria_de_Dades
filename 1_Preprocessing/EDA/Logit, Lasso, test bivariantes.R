@@ -14,11 +14,12 @@ library(dplyr)
 # S'HA DE CARREGAR TAMBÉ EL RDATA DE IMPUTACIÓ ======================
 #====================================================================
 
+data = data_imputed_AREG[,-7]
 # Boxplots 
-numeric_vars <- setdiff(names(data_imputed_MICE)[sapply(data, is.numeric)], "Exited")
+numeric_vars <- setdiff(names(data)[sapply(data, is.numeric)], "Exited")
 
 num_plots <- lapply(numeric_vars, function(var) {
-  ggplot(data_imputed_MICE, aes(x = Exited, y = .data[[var]], fill = Exited)) +
+  ggplot(data, aes(x = Exited, y = .data[[var]], fill = Exited)) +
     geom_boxplot() +
     labs(title = var, x = NULL, y = NULL) +
     theme_minimal() +
@@ -37,7 +38,7 @@ num_panel
 kruskal_results <- lapply(numeric_vars, function(var) {
   # fórmula: variable ~ Exited
   formula <- as.formula(paste("Exited ~ ", var))
-  test <- kruskal.test(formula, data = data_imputed_MICE)
+  test <- kruskal.test(formula, data = data)
   
   data.frame(
     Variable = var,
@@ -48,21 +49,50 @@ kruskal_results <- lapply(numeric_vars, function(var) {
 })
 
 kruskal_table <- do.call(rbind, kruskal_results)
-kruskal_results = as.data.frame(kruskal_results)
-kruskal_results %>% select(Variable, p_value) %>% where(p_value > 0.05)
-
-# ============================
-# 📊 3️⃣ Ordenar por p-valor
-# ============================
+kruskal_results = as.data.frame(kruskal_table)
 kruskal_table <- kruskal_table[order(kruskal_table$p_value), ]
 
-kruskal_table
+kruskal_table %>% filter(p_value > 0.05) #VARIABLES DETECTADAS KRUSKAL
 
-# Barplots 
-cat_vars <- setdiff(names(data_imputed_MICE)[sapply(data_imputed_MICE, is.factor)], "Exited")
+# Test indep cat =========================================
+# Lista de variables categóricas
+cat_vars <- setdiff(names(data)[sapply(data, is.factor)], "Exited")
+
+# Aplicamos chi-square
+chisq_results <- lapply(cat_vars, function(var) {
+  tbl <- table(data[[var]], data$Exited)
+  
+  # Verificamos si hay celdas esperadas < 5
+  expected <- chisq.test(tbl)$expected
+  test_used <- if(any(expected < 5)) "Fisher" else "Chi-squared"
+  
+  if(test_used == "Chi-squared"){
+    test <- suppressWarnings(chisq.test(tbl))
+  } else {
+    test <- fisher.test(tbl)
+  }
+  
+  data.frame(
+    Variable = var,
+    Test = test_used,
+    Statistic = ifelse(test_used == "Chi-squared", test$statistic, NA),
+    p_value = test$p.value,
+    stringsAsFactors = FALSE
+  )
+})
+
+chisq_table <- do.call(rbind, chisq_results)
+chisq_table <- chisq_table[order(chisq_table$p_value), ]
+
+chisq_table %>% filter(p_value > 0.05) #VARIABLES DETECTADAS INDEP
+
+
+
+# Barplots  ==============================================
+cat_vars <- setdiff(names(data)[sapply(data, is.factor)], "Exited")
 
 cat_plots <- lapply(cat_vars[-4], function(var) {
-  ggplot(data_imputed_MICE[,-7], aes(x = .data[[var]], fill = Exited)) +
+  ggplot(data[,-7], aes(x = .data[[var]], fill = Exited)) +
     geom_bar(position = "fill") +
     scale_y_continuous(labels = percent_format()) +
     labs(title = var, x = NULL, y = NULL) +
@@ -77,29 +107,21 @@ cat_panel <- wrap_plots(cat_plots, ncol = 3) +
 
 print(cat_panel)
 
-data_imputed_MICE$IsActiveMember = as.factor(data_imputed_MICE$IsActiveMember)
+# GLM ========================================================
+formula_glm <- as.formula(paste("Exited ~ 0 +", paste(setdiff(names(data[-17]), "Exited"), collapse = " + ")))
 
-ggplot(data_imputed_MICE, aes(x = IsActiveMember, y = Balance, fill = Exited)) +
-    geom_boxplot() +
-    labs(title = var, x = NULL, y = NULL) +
-    theme_minimal() +
-    theme(legend.position = "none",
-          plot.title = element_text(hjust = 0.5, size = 10))
-# GLM
-formula_glm <- as.formula(paste("Exited ~", paste(setdiff(names(data), "Exited"), collapse = " + ")))
-
-modelo_glm <- glm(formula_glm, data = data_imputed_MICE, family = binomial)
+modelo_glm <- glm(formula_glm, data = data[-17], family = binomial)
 
 summary(modelo_glm)
 vif(modelo_glm)
 
 
-## LASSO (L1)
+## LASSO (L1) ====================================================
 # Crea matriz de diseño (sin intercept)
-x <- model.matrix(Exited ~ ., data = data_imputed_MICE[,-c(7,18)])[, -1]
+x <- model.matrix(Exited ~ ., data = data[-17])
 
 # Variable respuesta binaria (glmnet la requiere numérica 0/1)
-y <- as.numeric(data_imputed_MICE$Exited) - 1  # convierte factor {1,2} a {0,1}
+y <- as.numeric(data$Exited) - 1  # convierte factor {1,2} a {0,1}
 
 set.seed(123) 
 
