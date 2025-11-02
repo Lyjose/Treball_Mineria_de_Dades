@@ -3,7 +3,12 @@ library(arulesViz)
 library(FactoMineR)
 library(tidyverse)
 
-data <- data_imputed_AREG[,-17]
+
+
+load("dataAREG_outliers.RData")
+data <- dataAREG
+
+
 clases <- sapply(data, class)
 
 varNum <- names(clases)[which(clases %in% c("numeric", "integer"))]
@@ -72,9 +77,9 @@ inspect(itemsets_filtrado[1:20])
 
 ########## Regles, configurar support, confidence i maxlen #########
 rules = apriori (transac, parameter = list (support=0.01, confidence=0.4, maxlen = 5, minlen=2))
-rules = apriori (transac, parameter = list (support=0.01, confidence=0.8, maxlen = 5, minlen=2))
-rules = apriori (transac, parameter = list (support=0.05, confidence=0.8, maxlen = 5, minlen=2))
-rules = apriori (transac, parameter = list (support=0.35, confidence=0.9, maxlen = 5, minlen=2))
+#rules = apriori (transac, parameter = list (support=0.01, confidence=0.8, maxlen = 5, minlen=2))
+#rules = apriori (transac, parameter = list (support=0.05, confidence=0.8, maxlen = 5, minlen=2))
+#rules = apriori (transac, parameter = list (support=0.35, confidence=0.9, maxlen = 5, minlen=2))
 summary(rules)
 
 
