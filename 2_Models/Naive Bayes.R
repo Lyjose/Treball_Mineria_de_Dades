@@ -6,7 +6,7 @@ library(dplyr)
 
 set.seed(123)
 
-data <- data_imputed_AREG[ , -17]
+data <- dataAREG
 
 Index <- sample(1:nrow(data), size = nrow(data)*0.8)
 dataTrain <- data[Index, ]
@@ -17,9 +17,10 @@ dataTest$Exited  <- factor(dataTest$Exited,  levels = c(0,1), labels = c("No", "
 
 # F1
 f1 <- function(data, lev = NULL, model = NULL) {
-  f1_val <- F1_Score(y_pred = data$pred, y_true = data$obs, positive = "Yes")
+  f1_val <- MLmetrics::F1_Score(y_pred = data$pred, y_true = data$obs, positive = "Yes")
   c(F1 = f1_val)
 }
+
 
 control <- trainControl(
   method = "repeatedcv",
@@ -80,3 +81,18 @@ print(cm)
 probs <- predict(modelo_nb2, newdata = dataTest, type = "prob")[, "Yes"]
 preds <- ifelse(probs > 0.2, "Yes", "No")
 confusionMatrix(factor(preds, levels=c("No","Yes")), dataTest$Exited, positive="Yes")
+
+
+################################################################################
+#####                            Para kaggle                                ####
+################################################################################
+
+pred_test <- predict(modelo_nb2, newdata = data_imputed_AREG_test, type = "raw")
+
+submission <- data.frame(
+  ID = data_imputed_AREG_test$ID,
+  Exited = pred_test
+)
+
+write.csv(submission, "submission_nb.csv", row.names = FALSE)
+
