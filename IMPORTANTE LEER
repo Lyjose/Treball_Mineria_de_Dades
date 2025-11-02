@@ -35,3 +35,14 @@ dataTest$Exited  <- factor(dataTest$Exited,  levels = c(0,1), labels = c("No", "
   )
 
 Y en el modelo = train(....,trControl = control, metric = "F1", ... )
+
+################## PUNTO 4 ####################
+PARA KAGGLE
+pred_test <- predict(....modelo...., newdata = data_imputed_AREG_test, type = "raw")
+
+submission <- data.frame(
+  ID = data_imputed_AREG_test$ID,
+  Exited = pred_test
+)
+
+write.csv(submission, "submission_........csv", row.names = FALSE)
