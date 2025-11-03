@@ -21,8 +21,8 @@ load("data_NA_imputed_AREG_test.RData")
 load("dataAREG_outliers.RData")
 
 data_test <- data_imputed_AREG_test[-6]
-
 data <- dataAREG
+
 clases <- sapply(data, class)
 
 
@@ -114,8 +114,8 @@ fp <- cm$table[2,1]
 fn <- cm$table[1,2]
 
 precision <- tp/(tp+fp)
-recall <- tp/(tp+fn)
-f1_1 <- 2*precision*recall/(precision+recall)
+recall_1 <- tp/(tp+fn)
+f1_1 <- 2*precision*recall_1/(precision+recall_1)
 Accuracy_1 = cm$overall["Accuracy"]
 Sensitivity_1 = cm$byClass["Sensitivity"]
 Specificity_1 = cm$byClass["Specificity"]
@@ -162,8 +162,8 @@ fp <- cm_2$table[2,1]
 fn <- cm_2$table[1,2]
 
 precision <- tp/(tp+fp)
-recall <- tp/(tp+fn)
-f1_2 <- 2*precision*recall/(precision+recall)
+recall_2 <- tp/(tp+fn)
+f1_2 <- 2*precision*recall_2/(precision+recall_2)
 Accuracy_2 = cm_2$overall["Accuracy"]
 Sensitivity_2 = cm_2$byClass["Sensitivity"]
 Specificity_2 = cm_2$byClass["Specificity"]
@@ -268,8 +268,8 @@ fp <- cm_3$table[2,1]
 fn <- cm_3$table[1,2]
 
 precision <- tp/(tp+fp)
-recall <- tp/(tp+fn)
-f1_3 <- 2*precision*recall/(precision+recall)
+recall_3 <- tp/(tp+fn)
+f1_3 <- 2*precision*recall_3/(precision+recall_3)
 Accuracy_3 = cm_3$overall["Accuracy"]
 Sensitivity_3 = cm_3$byClass["Sensitivity"]
 Specificity_3 = cm_3$byClass["Specificity"]
@@ -332,8 +332,8 @@ fp <- cm_4$table[2,1]
 fn <- cm_4$table[1,2]
 
 precision <- tp/(tp+fp)
-recall <- tp/(tp+fn)
-f1_4 <- 2*precision*recall/(precision+recall)
+recall_4 <- tp/(tp+fn)
+f1_4 <- 2*precision*recall_4/(precision+recall_4)
 Accuracy_4 = cm_4$overall["Accuracy"]
 Sensitivity_4 = cm_4$byClass["Sensitivity"]
 Specificity_4 = cm_4$byClass["Specificity"]
@@ -427,8 +427,8 @@ fp <- cm_5$table[2,1]
 fn <- cm_5$table[1,2]
 
 precision <- tp/(tp+fp)
-recall <- tp/(tp+fn)
-f1_5 <- 2*precision*recall/(precision+recall)
+recall_5 <- tp/(tp+fn)
+f1_5 <- 2*precision*recall_5/(precision+recall_5)
 Accuracy_5 = cm_5$overall["Accuracy"]
 Sensitivity_5 = cm_5$byClass["Sensitivity"]
 Specificity_5 = cm_5$byClass["Specificity"]
@@ -440,6 +440,8 @@ auc_value_5 <- auc(roc_obj)
 
 # Això indica un fort overfitting del train.
 
+
+
 #==============================================================================
 ###                                RESULTATS                               ####
 #==============================================================================
@@ -450,8 +452,13 @@ resultats <- data.frame(
   Accuracy = c(Accuracy_1, Accuracy_2, Accuracy_3, Accuracy_4, Accuracy_5),
   Sensitivity = c(Sensitivity_1, Sensitivity_2, Sensitivity_3, Sensitivity_4, Sensitivity_5),
   Specificity = c(Specificity_1, Specificity_2, Specificity_3, Specificity_4, Specificity_5),
-  AUC = c(auc_value_1, auc_value_2, auc_value_3, auc_value_4, auc_value_5)
+  AUC = c(auc_value_1, auc_value_2, auc_value_3, auc_value_4, auc_value_5),
+  Recall = c(recall_1, recall_2, recall_3, recall_4, recall_5)
 )
 
 print(resultats)
+
+save(knn_mixto, knn_mixto_k3, best_model, best_model_1, best_model_mixto,
+     best_model_smote, model_smote, resultats, file = "models_knn.RData")
+
 

@@ -124,8 +124,8 @@ fp <- cm_1$table[2,1]
 fn <- cm_1$table[1,2]
 
 precision <- tp/(tp+fp)
-recall <- tp/(tp+fn)
-f1_1 <- 2*precision*recall/(precision+recall)
+recall_1 <- tp/(tp+fn)
+f1_1 <- 2*precision*recall_1/(precision+recall_1)
 Accuracy_1 = cm_1$overall["Accuracy"]
 Sensitivity_1 = cm_1$byClass["Sensitivity"]
 Specificity_1 = cm_1$byClass["Specificity"]
@@ -180,8 +180,8 @@ fp <- cm_3$table[2,1]
 fn <- cm_3$table[1,2]
 
 precision <- tp/(tp+fp)
-recall <- tp/(tp+fn)
-f1_3 <- 2*precision*recall/(precision+recall)
+recall_3 <- tp/(tp+fn)
+f1_3 <- 2*precision*recall_3/(precision+recall_3)
 Accuracy_3 = cm_3$overall["Accuracy"]
 Sensitivity_3 = cm_3$byClass["Sensitivity"]
 Specificity_3 = cm_3$byClass["Specificity"]
@@ -198,3 +198,20 @@ submission_knn3 <- data.frame(
 )
 
 write.csv(submission_knn3, "submission_knn3_seleccion.csv", row.names = FALSE)
+
+resultats <- data.frame(
+  Model = c("k=1", "k=3"),
+  F1 = c(f1_1, f1_3),
+  Accuracy = c(Accuracy_1, Accuracy_3),
+  Sensitivity = c(Sensitivity_1, Sensitivity_3),
+  Specificity = c(Specificity_1, Specificity_3),
+  AUC = c(auc_value_1, auc_value_3),
+  Recall = c(recall_1, recall_3)
+)
+
+print(resultats)
+
+save(best_model_mixto, best_model_mixto_3, knn_mixto, knn_mixto_3, resultats,
+     file = "models_knn_selec.RData")
+
+
