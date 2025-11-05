@@ -8,9 +8,16 @@ set.seed(123)
 
 data <- dataAREG
 
+seleccio = c("Age","MaritalStatus","IsActiveMember","EstimatedSalary",
+           "SavingsAccountFlag","NumOfProducts","AvgTransactionAmount",
+           "Geography","EducationLevel","HasCrCard")
+
 Index <- sample(1:nrow(data), size = nrow(data)*0.8)
 dataTrain <- data[Index, ]
 dataTest  <- data[-Index, ]
+# Filtrar las variables seleccionadas del conjunto de datos
+dataTrain_subset <- dataTrain[, c("Exited", seleccio)]
+dataTest_subset <- dataTrain[, c("Exited", seleccio)]
 
 dataTrain$Exited <- factor(dataTrain$Exited, levels = c(0,1), labels = c("No", "Yes"))
 dataTest$Exited  <- factor(dataTest$Exited,  levels = c(0,1), labels = c("No", "Yes"))
@@ -25,10 +32,10 @@ f1 <- function(data, lev = NULL, model = NULL) {
 control <- trainControl(
   method = "repeatedcv",
   number = 5,
-  repeats = 3,
+  repeats = 5,
   classProbs = TRUE,
   summaryFunction = f1,
-  sampling = "smote",
+  #sampling = "smote",
   verboseIter = TRUE
 )
 
@@ -54,8 +61,8 @@ print(modelo_nb)
 # Ajuste fino
 grid2 <- expand.grid(
   usekernel = FALSE,
-  laplace = 0,
-  adjust = c(0,0.5,1,2,3,4,5)
+  laplace = c(0,1,2),
+  adjust = 0
 )
 
 modelo_nb2 <- train(
@@ -77,22 +84,60 @@ cm <- confusionMatrix(pred_class, dataTest$Exited, positive = "Yes")
 print(cm)
 
 
+################################################################################
+#####                            THRESHOLD                                ####
+################################################################################
+
+
 # Esto es una mierda, se puede hacer tb tuning del llindar
 probs <- predict(modelo_nb2, newdata = dataTest, type = "prob")[, "Yes"]
 preds <- ifelse(probs > 0.2, "Yes", "No")
 confusionMatrix(factor(preds, levels=c("No","Yes")), dataTest$Exited, positive="Yes")
 
+thresholds <- seq(0.01, 0.8, by = 0.01)
+
+# Inicializar un vector para almacenar los resultados del F1
+f1_scores <- numeric(length(thresholds))
+
+# Loop para probar cada threshold y calcular el F1
+for (i in seq_along(thresholds)) {
+  threshold <- thresholds[i]
+  preds <- ifelse(probs > threshold, "Yes", "No")
+  f1_scores[i] <- MLmetrics::F1_Score(y_pred = preds, y_true = dataTest$Exited, positive = "Yes")
+}
+
+threshold_f1_df <- data.frame(Threshold = thresholds, F1_Score = f1_scores)
+
+print(threshold_f1_df)
+
+best_threshold <- threshold_f1_df$Threshold[which.max(threshold_f1_df$F1_Score)]
+best_threshold
+
+preds_testtrain <- ifelse(probs > best_threshold, "Yes", "No")
+# CM
+cm_best <- confusionMatrix(
+  factor(preds_testtrain, levels = c("No", "Yes")),
+  dataTest$Exited,
+  positive = "Yes"
+); print(cm_best)
 
 ################################################################################
-#####                            Para kaggle                                ####
+#####                            Para Kaggle                                ####
 ################################################################################
 
-pred_test <- predict(modelo_nb2, newdata = data_imputed_AREG_test, type = "raw")
+# 1. Obtener probabilidades de test
+probs_test <- predict(modelo_nb2, newdata = data_imputed_AREG_test, type = "prob")[, "Yes"]
 
+# 2. Aplicar el mejor threshold encontrado
+best_threshold <- threshold_f1_df$Threshold[which.max(threshold_f1_df$F1_Score)]
+pred_test <- ifelse(probs_test > best_threshold, "Yes", "No")
+
+
+# 3. Crear el dataframe de submission
 submission <- data.frame(
   ID = data_imputed_AREG_test$ID,
   Exited = pred_test
 )
 
-write.csv(submission, "submission_nb_nosmote.csv", row.names = FALSE)
-
+# 4. Guardar el CSV
+write.csv(submission, "submission_nb_smote.csv", row.names = FALSE)
