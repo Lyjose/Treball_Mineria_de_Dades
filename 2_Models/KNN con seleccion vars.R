@@ -2,14 +2,26 @@
 ###          KNN MIXT SENSE SMOTE SENSE VARS IRRELLEVANTS                  ####
 #==============================================================================
 
-# seleccionem les variables que surten a les association rules
-vars <- c("ID","Age","IsActiveMember","CreditScore","NumOfProducts","MaritalStatus",
-          "Gender","SavingsAccountFlag","TransactionFrequency","LoanStatus",
-          "Balance","NetPromoterScore","ComplaintsCount","AvgTransactionAmount")
+packages <- c("caret", "vcd", "pROC", "VIM","fastDummies","themis","MLmetrics")
 
-vars_ex <- c("Age","IsActiveMember","CreditScore","NumOfProducts","MaritalStatus",
-             "Gender","SavingsAccountFlag","TransactionFrequency","LoanStatus",
-             "Balance","NetPromoterScore","ComplaintsCount","AvgTransactionAmount","Exited")
+install_if_missing <- function(pkg) {
+  if (!require(pkg, character.only = TRUE)) {
+    install.packages(pkg)
+    library(pkg, character.only = TRUE)
+  }
+}
+
+lapply(packages, install_if_missing)
+
+
+# seleccionem les variables que surten a les association rules
+vars <- c("ID","Age","IsActiveMember","NumOfProducts","MaritalStatus",
+          "Gender","SavingsAccountFlag","Balance","NetPromoterScore",
+          "AvgTransactionAmount","Geography","EducationLevel","HasCrCard")
+
+vars_ex <- c("Age","IsActiveMember","NumOfProducts","MaritalStatus",
+             "Gender","SavingsAccountFlag","Balance","NetPromoterScore",
+             "AvgTransactionAmount","Geography","EducationLevel","HasCrCard","Exited")
 
 
 load("data_NA_imputed_AREG_test.RData")
@@ -50,7 +62,7 @@ datanum <- data[,varNum]
 datacat <- data[,varCat]
 
 
-dataCat<- data[varCat][-8] # fora Exited, no volem que faci dummies
+dataCat<- data[varCat][-9] # fora Exited, no volem que faci dummies
 data_dummies <- dummy_cols(dataCat, remove_first_dummy = TRUE, 
                            remove_selected_columns = TRUE)
 
@@ -61,7 +73,7 @@ data_mixta <- cbind(datanum, data_dummies, Exited)
 
 set.seed(123)
 
-ind_col <- c(23) # columna on està exited
+ind_col <- c(20) # columna on està exited
 default_idx <- createDataPartition(data_mixta$Exited, p = 0.8, list = FALSE)
 X_trainC <- data_mixta[default_idx, ]
 X_testC <- data_mixta[-default_idx, ]
@@ -106,6 +118,7 @@ get_best_result = function(caret_fit) {
 best_model_mixto <- get_best_result(knn_mixto) # una altra vegada k=1
 
 predictions <-predict(knn_mixto, newdata = X_testC, type = "prob")
+pred_custom <- ifelse(predictions>0.4,"Yes","No") # baixem prob per evitar falsos negatius
 
 cm_1 <- confusionMatrix(predict(knn_mixto, newdata = X_testC), y_testC,positive="Yes")
 cm_1
@@ -134,7 +147,7 @@ auc_value_1 <- auc(roc_obj)
 
 
 # prediccions per test (submission)
-pred_test <- predict(knn_mixto, newdata = data_mixta_test, type = "raw")
+pred_test <- predict(knn_mixto, newdata = data_mixta_test, type = "prob")
 
 submission_knn1 <- data.frame(
   ID = data_test$ID,
@@ -213,5 +226,3 @@ print(resultats)
 
 save(best_model_mixto, best_model_mixto_3, knn_mixto, knn_mixto_3, resultats,
      file = "models_knn_selec.RData")
-
-
