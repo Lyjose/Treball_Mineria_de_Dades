@@ -1,16 +1,23 @@
-library(caret)
-library(naivebayes)
-library(smotefamily)
-library(MLmetrics)
-library(dplyr)
+
+packages <- c("caret", "naivebayes", "smotefamily", "MLmetrics","dplyr")
+
+install_if_missing <- function(pkg) {
+  if (!require(pkg, character.only = TRUE)) {
+    install.packages(pkg)
+    library(pkg, character.only = TRUE)
+  }
+}
+
+lapply(packages, install_if_missing)
 
 set.seed(123)
 
+load("dataAREG_outliers.RData")
 data <- dataAREG
 
-seleccio = c("Age","MaritalStatus","IsActiveMember","EstimatedSalary",
-           "SavingsAccountFlag","NumOfProducts","AvgTransactionAmount",
-           "Geography","EducationLevel","HasCrCard")
+seleccio = c("Age","IsActiveMember","MaritalStatus","EstimatedSalary", 
+             "SavingsAccountFlag","NumOfProducts","Gender","AvgTransactionAmount",
+             "Geography","EducationLevel","HasCrCard")
 
 Index <- sample(1:nrow(data), size = nrow(data)*0.8)
 dataTrain <- data[Index, ]

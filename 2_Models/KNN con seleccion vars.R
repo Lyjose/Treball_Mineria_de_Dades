@@ -15,13 +15,13 @@ lapply(packages, install_if_missing)
 
 
 # seleccionem les variables que surten a les association rules
-vars <- c("ID","Age","IsActiveMember","NumOfProducts","MaritalStatus",
-          "Gender","SavingsAccountFlag","Balance","NetPromoterScore",
-          "AvgTransactionAmount","Geography","EducationLevel","HasCrCard")
+vars <- c("ID","Age","IsActiveMember","MaritalStatus","EstimatedSalary", 
+          "SavingsAccountFlag","NumOfProducts","Gender","AvgTransactionAmount",
+          "Geography","EducationLevel","HasCrCard")
 
-vars_ex <- c("Age","IsActiveMember","NumOfProducts","MaritalStatus",
-             "Gender","SavingsAccountFlag","Balance","NetPromoterScore",
-             "AvgTransactionAmount","Geography","EducationLevel","HasCrCard","Exited")
+vars_ex <- c("Age","IsActiveMember","MaritalStatus","EstimatedSalary", 
+          "SavingsAccountFlag","NumOfProducts","Gender","AvgTransactionAmount",
+          "Geography","EducationLevel","HasCrCard","Exited")
 
 
 load("data_NA_imputed_AREG_test.RData")
@@ -73,7 +73,7 @@ data_mixta <- cbind(datanum, data_dummies, Exited)
 
 set.seed(123)
 
-ind_col <- c(20) # columna on està exited
+ind_col <- c(19) # columna on està exited
 default_idx <- createDataPartition(data_mixta$Exited, p = 0.8, list = FALSE)
 X_trainC <- data_mixta[default_idx, ]
 X_testC <- data_mixta[-default_idx, ]
@@ -137,8 +137,8 @@ fp <- cm_1$table[2,1]
 fn <- cm_1$table[1,2]
 
 precision <- tp/(tp+fp)
-recall_1 <- tp/(tp+fn)
-f1_1 <- 2*precision*recall_1/(precision+recall_1)
+recall <- tp/(tp+fn)
+f1_1 <- 2*precision*recall/(precision+recall)
 Accuracy_1 = cm_1$overall["Accuracy"]
 Sensitivity_1 = cm_1$byClass["Sensitivity"]
 Specificity_1 = cm_1$byClass["Specificity"]
@@ -193,8 +193,8 @@ fp <- cm_3$table[2,1]
 fn <- cm_3$table[1,2]
 
 precision <- tp/(tp+fp)
-recall_3 <- tp/(tp+fn)
-f1_3 <- 2*precision*recall_3/(precision+recall_3)
+recall <- tp/(tp+fn)
+f1_3 <- 2*precision*recall/(precision+recall)
 Accuracy_3 = cm_3$overall["Accuracy"]
 Sensitivity_3 = cm_3$byClass["Sensitivity"]
 Specificity_3 = cm_3$byClass["Specificity"]
@@ -216,10 +216,9 @@ resultats <- data.frame(
   Model = c("k=1", "k=3"),
   F1 = c(f1_1, f1_3),
   Accuracy = c(Accuracy_1, Accuracy_3),
-  Sensitivity = c(Sensitivity_1, Sensitivity_3),
+  Recall = c(Sensitivity_1, Sensitivity_3),
   Specificity = c(Specificity_1, Specificity_3),
-  AUC = c(auc_value_1, auc_value_3),
-  Recall = c(recall_1, recall_3)
+  AUC = c(auc_value_1, auc_value_3)
 )
 
 print(resultats)
