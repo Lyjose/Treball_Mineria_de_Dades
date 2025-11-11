@@ -26,8 +26,8 @@ dataTest$Exited  <- factor(dataTest$Exited,  levels = c(0,1), labels = c("No", "
 # Hay que especificar en el control que se use f1 en summaryFunction ,también smote esta aqui en sampling
   control <- trainControl(
     method = "repeatedcv",
-    number = 5,
-    repeats = 5,
+    number = 10,
+    repeats = 10,
     classProbs = TRUE,
     summaryFunction = f1,
     sampling = "smote",
