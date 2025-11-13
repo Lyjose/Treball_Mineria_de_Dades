@@ -9,7 +9,11 @@ Aquest projecte forma part de l'assignatura Mètodes Estadístics en Mineria de 
 ## Membres col·laboradors:
 
 Edurne Álvarez - Estadística (UPC) + Economia (UB) - ealvarfe62@alumnes.ub.edu
+
 Arnau Gómez - Estadística (UPC) - arnau.gomez.catala@upc.edu
+
 Hugo Madrid - Estadística (UPC) + Economia (UB) - hmadriro32@alumnes.ub.edu 
+
 Miguel Prada - Estadística (UPC) + Economia (UB) - mpradaipsc@gmail.com
+
 Sergi Renau - Matemàtiques (UPC) - srenause7@alumnes.ub.edu
