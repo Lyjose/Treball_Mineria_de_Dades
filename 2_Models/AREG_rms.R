@@ -10,7 +10,9 @@ install_if_missing <- function(pkg) {
 
 lapply(packages, install_if_missing)
 
-set.seed(123)
+Mejores_thresholds <- c()
+
+set.seed(sample(1:1000, 1))
 
 load("dataAREG_outliers.RData")
 data <- dataAREG
@@ -47,23 +49,25 @@ options(datadist = "dd")
 #Debido a que AREG sirve muy bien para variables continuas pero no esta pensado para binarias
 # debemos hacer un ajuste "logit" (lrm) para poder hacer las predicciones de Exited:
 
-model_AREG <- lrm(Exited ~ rcs(Tenure, 3) + rcs(NetPromoterScore, 3) +
+model_AREG <- glm(Exited ~ rcs(Tenure, 3) + rcs(NetPromoterScore, 3) +
                     rcs(TransactionFrequency, 3) + rcs(Age, 4) + rcs(EstimatedSalary, 4) + 
                     rcs(AvgTransactionAmount, 4) + rcs(DigitalEngagementScore, 4) + 
                     rcs(CreditScore, 4) + rcs(Balance, 4) + Gender + EducationLevel + 
-                    LoanStatus + Geography + HasCrCard + IsActiveMember +
-                    SavingsAccountFlag + NumOfProducts,  
-                  data = dataTrain)
+                    Geography + HasCrCard + IsActiveMember + SavingsAccountFlag + 
+                    NumOfProducts,
+                  data = dataTrain,family=binomial(link="logit"))
 
 # Notar que no usamos ni CustomerSegment ni ComplaintsCount ni MaritalStatus 
 # No funcnionan correctamente, miraré de corregirlo.
 
+summary(model_AREG)
 
 # Prediccions de probabilitat
-probs <- predict(model_AREG, newdata = dataTest, type = "fitted")  
+probs <- predict(model_AREG, newdata = dataTest, type = "response")  
+
 
 # Convertir a prediccions binàries amb llindar 0.5
-pred <- ifelse(probs > 0.8, "Yes", "No")
+pred <- ifelse(probs > 0.5, "Yes", "No")
 
 results <- data.frame(
   pred = pred,
@@ -75,13 +79,41 @@ f1_val
 
 
 
+################################################################################
+#####                            THRESHOLD                                ####
+################################################################################
+
+thresholds <- seq(0.01, 0.8, by = 0.01)
+
+# Inicializar un vector para almacenar los resultados del F1
+f1_scores <- numeric(length(thresholds))
+
+# Loop para probar cada threshold y calcular el F1
+for (i in seq_along(thresholds)) {
+  threshold <- thresholds[i]
+  preds <- ifelse(probs > threshold, "Yes", "No")
+  f1_scores[i] <- MLmetrics::F1_Score(y_pred = preds, y_true = dataTest$Exited, positive = "Yes")
+}
+
+threshold_f1_df <- data.frame(Threshold = thresholds, F1_Score = f1_scores)
+
+print(threshold_f1_df)
+
+best_threshold <- threshold_f1_df$Threshold[which.max(threshold_f1_df$F1_Score)]
+best_threshold
+
+Mejores_thresholds <- c(Mejores_thresholds, best_threshold)
+
+mean(Mejores_thresholds)
 
 
-
-
-
-
-
+preds_testtrain <- ifelse(probs > best_threshold, "Yes", "No")
+# CM
+cm_best <- confusionMatrix(
+  factor(preds_testtrain, levels = c("No", "Yes")),
+  dataTest$Exited,
+  positive = "Yes"
+); print(cm_best)
 
 
 
@@ -90,11 +122,11 @@ f1_val
 ################################################################################
 
 # 1. Obtener probabilidades de test
-probs_test <- predict(modelo_nb2, newdata = data_imputed_AREG_test, type = "prob")[, "Yes"]
+probs_test <- predict(model_AREG, newdata = data_imputed_AREG_test[,-c(1,6)], type = "response")
 
 # 2. Aplicar el mejor threshold encontrado
 best_threshold <- threshold_f1_df$Threshold[which.max(threshold_f1_df$F1_Score)]
-pred_test <- ifelse(probs_test > best_threshold, "Yes", "No")
+pred_test <- ifelse(probs_test > mean(Mejores_thresholds), "Yes", "No")
 
 
 # 3. Crear el dataframe de submission
@@ -104,4 +136,4 @@ submission <- data.frame(
 )
 
 # 4. Guardar el CSV
-write.csv(submission, "submission_nb_smote.csv", row.names = FALSE)
+write.csv(submission, "submission_AREG.csv", row.names = FALSE)
