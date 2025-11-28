@@ -1,0 +1,371 @@
+---
+title: "Outliers"
+author: "Guillermo II de Prusia"
+date: "2025-09-30"
+output: pdf_document
+---
+
+```{r eval=FALSE, include=FALSE}
+install.packages("readr")
+install.packages("dplyr")
+install.packages("tibble")
+install.packages("ggplot2")
+install.packages("knitr")
+install.packages("tidyr")
+install.packages("dlookr")
+install.packages("dplyr")
+install.packages("Rlof")
+library(Rlof)
+library(readr)
+library(dplyr)
+library(tibble)
+library(ggplot2)
+library(knitr)    
+library(tidyr)
+library(dlookr)
+library(dplyr)
+```
+##################################KNN###########
+
+
+```{r }
+
+load("C:/Users/miguel.prada.leon/Downloads/data_NA_imputed_KNN_test.RData")
+data <- data_imputed_KNN_test
+
+for(i in 1:ncol(data)){
+  if(is.character(data[[i]])==TRUE){
+    data[[i]] = as.factor(data[[i]])
+  }
+}
+
+data$HasCrCard <- as.factor(data$HasCrCard)
+data$IsActiveMember <- as.factor(data$IsActiveMember)
+data$SavingsAccountFlag <- as.factor(data$SavingsAccountFlag)
+#data$Exited <- as.factor(data$Exited)
+data <- subset(data, select = c(-Surname,-ID))
+```
+
+```{r Prepo}
+diagnose_numeric(data)
+diagnose_category(data)
+colnames(data)
+data_num <- data[, sapply(data, is.numeric)]
+data_categ <- data[, sapply(data, is.factor)]
+varNum<-colnames(data_num)
+varCateg<-colnames(data_categ)
+```
+
+
+```{r Boxplot}
+par(mfrow = c(1,1))
+for(i in 1:length(data_num)){
+  boxplot(data_num[i])
+  
+}
+```
+
+```{r Z score}
+variable<-colnames(data_num)
+umbral<-vector(length=11)
+for(i in 1:length(data_num)){
+  valorEscalado <- scale(data_num[, variable[i]])
+hist(valorEscalado)
+title(variable[i])
+}
+
+```
+
+
+
+
+
+```{r Distancia Mahalanobis}
+distancia_mahalanobis <- mahalanobis(data_num, colMeans(data_num), cov(data_num))
+plot(density(distancia_mahalanobis))
+```
+
+```{r}
+distancia_mahalanobis <- mahalanobis(scale(data[, varNum]),
+                                     colMeans(scale(data[, varNum])),
+                                     cov(scale(data[, varNum])))
+
+umbral <- qchisq(0.95, df = length(varNum))  # dante va dir 95%
+
+outliers.M <- which(distancia_mahalanobis > umbral)
+cat("Nombre d'outliers detectats:", length(outliers.M), "\n")
+
+```
+```{r}
+
+outliers.scores <- Rlof::lof(data[, varNum], k = 5)
+umbrall <- quantile(outliers.scores, 0.95)
+plot(density(outliers.scores))
+outliers.L <- which(outliers.scores > umbrall)
+cat("Nombre d'outliers detectats:", length(outliers.L), "\n")
+```
+```{r}
+iguales<-intersect(outliers.M,outliers.L)
+data<-data[-iguales,]
+dataKNN_test<-data
+```
+
+############################# MICE ###############################################
+```{r}
+# 1. CARREGUEM DADES DEL TEST
+load("data_NA_imputed_AREG_test.RData")
+data <- data_imputed_AREG_test
+
+# 2. Factors
+for(i in 1:ncol(data)){
+  if(is.character(data[[i]])==TRUE){
+    data[[i]] = as.factor(data[[i]])
+  }
+}
+
+data$HasCrCard <- as.factor(data$HasCrCard)
+data$IsActiveMember <- as.factor(data$IsActiveMember)
+# ELIMINADA: data$SavingsAccountFlag <- as.factor(data$SavingsAccountFlag)
+
+# 3. Neteja IDs per anàlisi
+data_clean <- subset(data, select = -c(Surname, ID))
+```
+
+```{r Prepo}
+diagnose_numeric(data)
+diagnose_category(data)
+colnames(data)
+data_num <- data[, sapply(data, is.numeric)]
+data_categ <- data[, sapply(data, is.factor)]
+varNum<-colnames(data_num)
+varCateg<-colnames(data_categ)
+```
+
+
+```{r Boxplot}
+par(mfrow = c(1,1))
+for(i in 1:length(data_num)){
+  boxplot(data_num[i])
+  
+}
+```
+
+```{r Z score}
+variable<-colnames(data_num)
+umbral<-vector(length=11)
+for(i in 1:length(data_num)){
+  valorEscalado <- scale(data_num[, variable[i]])
+hist(valorEscalado)
+title(variable[i])
+}
+
+```
+
+
+
+
+
+```{r Distancia Mahalanobis}
+distancia_mahalanobis <- mahalanobis(data_num, colMeans(data_num), cov(data_num))
+plot(density(distancia_mahalanobis))
+```
+
+```{r}
+distancia_mahalanobis <- mahalanobis(scale(data[, varNum]),
+                                     colMeans(scale(data[, varNum])),
+                                     cov(scale(data[, varNum])))
+
+umbral <- qchisq(0.95, df = length(varNum))  # dante va dir 95%
+
+outliers.M <- which(distancia_mahalanobis > umbral)
+cat("Nombre d'outliers detectats:", length(outliers.M), "\n")
+
+```
+
+```{r}
+
+outliers.scores <- Rlof::lof(data[, varNum], k = 5)
+umbrall <- quantile(outliers.scores, 0.95)
+plot(density(outliers.scores))
+outliers.L <- which(outliers.scores > umbrall)
+cat("Nombre d'outliers detectats:", length(outliers.L), "\n")
+```
+```{r}
+iguales<-intersect(outliers.M,outliers.L)
+data<-data[-iguales,]
+dataMICE_test<-data
+```
+
+############################# AREG ###############################################
+```{r}
+# 1. CARREGUEM DADES DEL TEST
+load("data_NA_imputed_AREG_test.RData")
+data <- data_imputed_AREG_test
+
+# Neteja de factors
+for(i in 1:ncol(data)){
+  if(is.character(data[[i]])==TRUE){
+    data[[i]] = as.factor(data[[i]])
+  }
+}
+
+data$HasCrCard <- as.factor(data$HasCrCard)
+data$IsActiveMember <- as.factor(data$IsActiveMember)
+# data$SavingsAccountFlag <- as.factor(data$SavingsAccountFlag) <-- ELIMINADA
+
+# IDs fora per l'anàlisi numèrica
+data_clean <- subset(data, select = -c(Surname, ID))
+```
+
+```{r Prepo}
+# Selecció de variables numèriques (Automatic com al teu codi)
+data_num <- data_clean[, sapply(data_clean, is.numeric)]
+varNum <- colnames(data_num)
+```
+
+
+```{r Boxplot}
+par(mfrow = c(1,1))
+for(i in 1:length(data_num)){
+  boxplot(data_num[i])
+  
+}
+```
+
+```{r Z score}
+variable<-colnames(data_num)
+umbral<-vector(length=11)
+for(i in 1:length(data_num)){
+  valorEscalado <- scale(data_num[, variable[i]])
+hist(valorEscalado)
+title(variable[i])
+}
+
+```
+
+
+
+```{r Distancia Mahalanobis}
+distancia_mahalanobis <- mahalanobis(scale(data_num),
+                                     colMeans(scale(data_num)),
+                                     cov(scale(data_num)))
+
+umbral_m <- qchisq(0.95, df = length(varNum))
+outliers.M <- which(distancia_mahalanobis > umbral_m)
+cat("Outliers Mahalanobis (Test):", length(outliers.M), "\n")
+
+```
+
+```{r LOF}
+outliers.scores <- Rlof::lof(scale(data_num), k = 5)
+umbrall <- quantile(outliers.scores, 0.95, na.rm=TRUE)
+outliers.L <- which(outliers.scores > umbrall)
+cat("Outliers LOF (Test):", length(outliers.L), "\n")
+```
+
+```{r comprovacio}
+iguales <- intersect(outliers.M, outliers.L)
+cat("Outliers potencials detectats al Test:", length(iguales), "\n")
+
+# IMPORTANTISSIM: NO PODEM ESBORRAR FILES DEL TEST.
+# data <- data[-iguales, ]  <--- AQUESTA LÍNIA ESTÀ PROHIBIDA AL TEST
+
+# Simplement guardem el fitxer (potser volem estudiar aquests casos després)
+dataAREG_test_final <- data
+save(dataAREG_test_final, file = "data_Final_AREG_test.RData")
+```
+
+############################# FOREST ###############################################
+```{r}
+rm(list = setdiff(ls(), c("dataKNN_test","dataMICE_test","dataAREG_test")))
+load("C:/Users/miguel.prada.leon/Downloads/data_NA_imputed_FOREST_test.RData")
+data <- data_imputed_FOREST_test
+
+for(i in 1:ncol(data)){
+  if(is.character(data[[i]])==TRUE){
+    data[[i]] = as.factor(data[[i]])
+  }
+}
+
+data$HasCrCard <- as.factor(data$HasCrCard)
+data$IsActiveMember <- as.factor(data$IsActiveMember)
+data$SavingsAccountFlag <- as.factor(data$SavingsAccountFlag)
+#data$Exited <- as.factor(data$Exited)
+data <- subset(data, select = c(-Surname,-ID))
+```
+
+```{r Prepo}
+diagnose_numeric(data)
+diagnose_category(data)
+colnames(data)
+data_num <- data[, sapply(data, is.numeric)]
+data_categ <- data[, sapply(data, is.factor)]
+varNum<-colnames(data_num)
+varCateg<-colnames(data_categ)
+```
+
+
+```{r Boxplot}
+par(mfrow = c(1,1))
+for(i in 1:length(data_num)){
+  boxplot(data_num[i])
+  
+}
+```
+
+```{r Z score}
+variable<-colnames(data_num)
+umbral<-vector(length=11)
+for(i in 1:length(data_num)){
+  valorEscalado <- scale(data_num[, variable[i]])
+hist(valorEscalado)
+title(variable[i])
+}
+
+```
+
+
+
+
+
+```{r Distancia Mahalanobis}
+distancia_mahalanobis <- mahalanobis(data_num, colMeans(data_num), cov(data_num))
+plot(density(distancia_mahalanobis))
+```
+
+```{r}
+distancia_mahalanobis <- mahalanobis(scale(data[, varNum]),
+                                     colMeans(scale(data[, varNum])),
+                                     cov(scale(data[, varNum])))
+
+umbral <- qchisq(0.95, df = length(varNum))  # dante va dir 95%
+
+outliers.M <- which(distancia_mahalanobis > umbral)
+cat("Nombre d'outliers detectats:", length(outliers.M), "\n")
+
+```
+
+```{r}
+
+
+outliers.scores <- Rlof::lof(data[, varNum], k = 5)
+umbrall <- quantile(outliers.scores, 0.95)
+plot(density(outliers.scores))
+outliers.L <- which(outliers.scores > umbrall)
+cat("Nombre d'outliers detectats:", length(outliers.L), "\n")
+```
+
+```{r}
+iguales<-intersect(outliers.M,outliers.L)
+data<-data[-iguales,]
+dataFOR_test<-data
+rm(list = setdiff(ls(), c("dataKNN_test","dataMICE_test","dataAREG_test","dataFOR_test")))
+```
+
+
+```{r}
+save(dataAREG_test,file="C:/Users/miguel.prada.leon/Desktop/outliers/dataAREG_test_outliers.RData")
+save(dataFOR_test,file="C:/Users/miguel.prada.leon/Desktop/outliers/dataFOR_test_outliers.RData")
+save(dataKNN_test,file="C:/Users/miguel.prada.leon/Desktop/outliers/dataKNN_test_outliers.RData")
+save(dataMICE_test,file="C:/Users/miguel.prada.leon/Desktop/outliers/dataMICE_test_outliers.RData")
+```

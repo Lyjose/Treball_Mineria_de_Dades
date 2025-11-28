@@ -1,0 +1,338 @@
+---
+title: "Imputation for the test file"
+author: "Arnau Gómez Català"
+date: "2025-10-04"
+output: pdf_document
+---
+
+```{r}
+library(readr)
+library(dplyr)
+library(VIM)
+data <- read_csv("train.csv", col_types = cols(...1 = col_skip()))
+
+# --- CANVI 1: SELECCIÓ DE VARIABLES IMPORTANTS ---
+# Definim les úniques que volem conservar (més ID i Surname per després)
+vars_bones <- c("ID", "Surname", "Exited", # Identificadors i Target
+                "CreditScore", "Geography", "Gender", "Age", "Tenure", 
+                "Balance", "NumOfProducts", "HasCrCard", "IsActiveMember", 
+                "EstimatedSalary")
+
+# Filtrem el dataset per quedar-nos només amb això
+data <- data %>% select(any_of(vars_bones))
+# ------------------------------------------------
+
+for(i in 1:ncol(data)){
+  if(is.character(data[[i]])==TRUE){
+    data[[i]] = as.factor(data[[i]])
+  }
+}
+
+data$HasCrCard <- as.factor(data$HasCrCard)
+data$IsActiveMember <- as.factor(data$IsActiveMember)
+data$Exited <- as.factor(data$Exited)
+
+```
+
+Podrem veure els valors faltants de la nostra base de dades de forma visual:
+
+```{r}
+visdat::vis_dat(data)
+```
+Veiem només tenim dos tipus de variables (Factor i numèriques) però que tenim una barbaritat de NAs a les nostres variables. Anem a arreglar-ho.
+
+# Imputació de valors faltants:
+
+Mirarem primerament si hi han valors extrems que s'hagin de considerar NAs per haver estat incorrectament afegits a la base de dades:
+
+```{r}
+summary(data)
+```
+Busquem valors tant extrems que siguin irreals i s'hagin de considerar faltants; algú amb $500$ anys, una satifacció del client de $13$ cuan la variable es mou entre el $0$ i el $10$, ingresos negatius o variables binàries amb valors diferents a $1$ o $0$. Per aquesta base de dades no hem trobat valors d'aquest tipus, per tant començarem directament amb la imputació dels valors que ja tenim faltants.
+
+Comprovarem la aleatòrietat de les dades faltants amb el test de Little per a MCAR:
+
+```{r}
+naniar::mcar_test(data)
+```
+Veiem que per un P-valor de `r naniar::mcar_test(data)$p.value` els nostres Missings are Completly generated At Random. Llavors no ens haurem de preocupar de trobar patrons per els cuals hagin sigut generats. 
+
+Comencem amb la imputació principalment per tres mètodes; **MICE**, **Veïns Propers** i **Bosc Aleatòri**. D'aquesta forma tindrem 3 possibles bases de dades que podem utilitzar per al model predictiu i podrem escollir quin dels tres mètodes funcionarà millor, fent que tinguem un *F1 score* major.
+
+## MICE:
+
+Podrem fer la primera imputació de les dades faltants a través de l'algorisme MICE (Multiple Imputation by Chained Equations). 
+
+- Utilitzarem el mètode *pmm* (Predictive Mean Matching), per les variables numèriques, excepte *ID*.
+- El mètode *logreg* (Regressió Logística), per les variables binàries, excepte *Exited*.
+- Y per últim el mètode *polyreg* (Regressió Logística Politòmica), per les variables categòriques amb més d'un factor.
+
+
+```{r, results=FALSE, warning=FALSE, echo=TRUE, include=FALSE}
+## MICE: IMPUTACIÓ CONJUNTA (Correcta)
+
+# 1. Selecció de TOTES les variables bones alhora
+# No separem per tipus, perquè MICE necessita unes per predir les altres.
+data_mice_input <- data |>
+  select(Tenure, Balance, Age, NumOfProducts, EstimatedSalary, CreditScore, 
+         Geography, Gender, HasCrCard, IsActiveMember, Exited)
+
+# 2. Execució de MICE (Ell sol detecta els mètodes)
+# "pmm" per numèriques, "logreg" per binaris, "polyreg" per factors >2 nivells
+# Si volem forçar mètodes específics, podem usar l'argument 'method', 
+# però el 'defaultMethod' de mice sol encertar-la.
+
+mice_output <- mice::mice(data_mice_input, m = 10, maxit = 10, seed = 28657)
+
+# 3. Completar dades
+imputed_data_MICE <- mice::complete(mice_output)
+
+# 4. Recuperar IDs i Surname (que havíem apartat)
+data_imputed_MICE <- data
+# Copiem les columnes imputades sobre l'original
+for(col in names(imputed_data_MICE)) {
+  data_imputed_MICE[[col]] <- imputed_data_MICE[[col]]
+}
+
+# Guardar
+save(data_imputed_MICE, file = "data_NA_imputed_MICE.RData")
+```
+
+
+
+```{r}
+density_before_after <- function(before, after) {
+    require(ggplot2)
+    
+    density_df_before <- before |> 
+        select(where(is.numeric)) |>
+        mutate(imputation = "original")
+    
+    density_df_after <- after |>
+        select(where(is.numeric)) |>
+        mutate(imputation = "imputat")
+    
+    density_df <- bind_rows(density_df_before, density_df_after) |>
+        mutate(imputation = factor(imputation)) |>
+        tidyr::pivot_longer(!imputation, names_to = "variable") |>
+        filter(!is.na(value))
+    
+    ggplot(density_df, aes(x = value, color = imputation, fill = imputation)) +
+        facet_wrap(~variable, scales = "free") +
+        geom_histogram(alpha = 0.2, width = 0.1, bins = 30, position = "dodge") +
+        scale_color_discrete(aesthetics = c("color", "fill"), name = "") +
+        scale_y_continuous(breaks = NULL) +
+        xlab("") +
+        ylab("") +
+        ggtitle("Densitat abans i després de la imputació.") +
+        theme_minimal() +
+        theme(panel.grid = element_blank())
+}
+mass_before_after <- function(before, after) {
+    require(ggplot2)
+    
+    mass_df_before <- before |>
+        select(where(is.factor)) |>
+        mutate(imputation = "original")
+    
+    mass_df_after <- after |>
+        select(where(is.factor)) |>
+        mutate(imputation = "imputat")
+    
+    levels_in_order <- lapply(mass_df_before, levels) |> unlist()
+    
+    mass_df <- bind_rows(mass_df_before, mass_df_after) |>
+      mutate(imputation = factor(imputation)) |>
+      tidyr::pivot_longer(!imputation, names_to = "variable") |>
+      filter(!is.na(value)) |>
+      group_by(imputation, variable) |> 
+      reframe(prop = proportions(table(value)), category = names(prop)) |>
+      group_by(variable) |> 
+      mutate(category = factor(category, levels = levels(mass_df_before[[unique(variable)]]))) |>
+      filter(prop > 0)
+    
+    ggplot(mass_df, aes(x = category, y = prop, color = imputation, fill = imputation)) +
+        facet_wrap(~variable, scales = "free") +
+        geom_col(alpha = 0.2, width = 0.6, position = "dodge") +
+        scale_color_discrete(aesthetics = c("color", "fill"), name = "") +
+        scale_y_continuous(breaks = NULL) +
+        xlab("") +
+        ylab("") +
+        ggtitle("Massa abans i després de la imputació") + 
+        theme_minimal() +
+        theme(panel.grid = element_blank(),
+              axis.text.x = element_text(angle = 45, hjust = 1))
+}
+```
+
+```{r}
+density_before_after(data, data_imputed_MICE)
+```
+
+
+## Veïns Propers:
+
+Imputarem els valors faltants dels 7 veïns (Número ) més propers, utilitzarem la mitjana d'aquests veïns per imputar les variables numèriques i utilitzarem la moda d'aquest veïns per les variables categòriques.
+
+```{r}
+## Veïns Propers (KNN):
+
+# 1. Preparem les dades (Tot JUNT, sense IDs ni Exited)
+# KNN funciona millor si li dones tot el context.
+data_knn_input <- data |>
+  select(Tenure, Balance, Age, NumOfProducts, EstimatedSalary, CreditScore, 
+         Geography, Gender, HasCrCard, IsActiveMember)
+
+# 2. Executem KNN (VIM)
+set.seed(28657)
+imputed_data_KNN_raw <- VIM::kNN(
+    as.data.frame(data_knn_input), 
+    k = 7, 
+    imp_var = FALSE # No volem les columnes extra "_imp"
+)
+
+# 3. Reconstruïm el dataset final (Afegint ID, Surname, Exited originals)
+data_imputed_KNN <- imputed_data_KNN_raw
+data_imputed_KNN$ID <- data$ID
+data_imputed_KNN$Surname <- data$Surname
+data_imputed_KNN$Exited <- data$Exited # El target no es toca
+
+# (Opcional: Reordenar columnes perquè quedi bonic)
+data_imputed_KNN <- data_imputed_KNN %>% select(ID, Surname, everything())
+
+# Guardar
+save(data_imputed_KNN, file = "data_NA_imputed_KNN.RData")
+```
+
+Podrem comprarar-ho de la mateixa forma que amb l'algorisme anterior:
+
+```{r}
+density_before_after(data, data_imputed_KNN)
+```
+
+
+## Bosc Aleatòri:
+
+```{r, results=FALSE, warning=FALSE, echo=TRUE, include=FALSE}
+## Bosc Aleatòri:
+
+set.seed(28657)
+
+# Usem el mateix input net que pel KNN (sense IDs ni Exited)
+forest_output <- missForest::missForest(
+    as.data.frame(data_knn_input), # Reutilitzem el dataframe netejat del KNN
+    maxiter = 10, ntree = 20,
+    variablewise = TRUE, verbose = TRUE 
+)
+
+# Reconstruïm
+data_imputed_FOREST <- forest_output$ximp
+data_imputed_FOREST$ID <- data$ID
+data_imputed_FOREST$Surname <- data$Surname
+data_imputed_FOREST$Exited <- data$Exited
+
+save(data_imputed_FOREST, file = "data_NA_imputed_FOREST.RData")
+```
+
+```{r}
+bind_cols(
+    variable = names(forest_output$ximp),
+    tipus_error = names(forest_output$OOBerror),
+    error = round(forest_output$OOBerror, 2)
+) |>
+    arrange(tipus_error, -error) |>
+    knitr::kable(col.names = c("Variable", "Tipus d'Error", "Error"))
+
+```
+
+```{r}
+density_before_after(data, data_imputed_FOREST)
+```
+
+Veiem que aquest mètode és el pitjor dels utilitzats prèviament, sembla ajuntar tots els valors imputats al centre, al voltant de la mitjana de cada variable en una mena de distribució normal forzada que no ens ajudarà pas en el nostre objectiu.
+
+
+Encara que es cert que en les variables categòriques aconsegueix una imputació molt semblant al *MICE* i millor que amb els *K-Nearest Neighbors*.
+
+## Imputació per Bootstrap:
+
+Amb la funció *aregImpute()* podrem fer imputació de les dades faltants basada en regressions amb splines. Utilitza regressió aditiva amb splines per a variables numèriques i regressió logística per a les categòriques.
+
+```{r, results=FALSE, message=FALSE, warning=FALSE, echo=TRUE, include=FALSE}
+## Imputació per Bootstrap (AREG):
+
+# 1. Preparació de dades (Sense IDs ni Surname)
+data_areg_input <- data |>
+  select(Tenure, Balance, Age, NumOfProducts, EstimatedSalary, CreditScore,
+         Geography, Gender, HasCrCard, IsActiveMember, Exited)
+
+# Assegurem que NumOfProducts es tracti com a factor si cal (AREG ho prefereix a vegades)
+data_areg_input$NumOfProducts <- as.factor(data_areg_input$NumOfProducts) 
+
+set.seed(28657)
+
+# 2. Execució AREG (Fórmula NETA)
+# Només posem les variables que realment existeixen i importen.
+areg_output <- Hmisc::aregImpute(
+    data = data_areg_input,
+    formula = ~ Exited + Gender + HasCrCard + IsActiveMember + Geography + 
+                Tenure + Balance + Age + EstimatedSalary + CreditScore + NumOfProducts,
+    n.impute = 5,
+    nk = 5 # nk = 0 per linear, 3-5 per splines (no linearitat)
+)
+
+# 3. Reconstrucció del dataset
+# aregImpute no retorna un dataset complet directament, cal omplir els forats.
+# Agafem la imputació número 3 (aleatòria entre les 5 generades)
+
+imputed_values_list <- areg_output$imputed
+data_imputed_AREG <- data # Copiem l'original (que ja està filtrat per vars_bones)
+
+# Bucle per omplir només els NAs amb els valors calculats
+for (col in names(imputed_values_list)) {
+  # Si la columna té imputacions guardades
+  if (!is.null(imputed_values_list[[col]])) {
+    
+    # Recuperem els valors (agafem la columna 3 de les 5 imputacions)
+    vals_imputats <- imputed_values_list[[col]][, 3] 
+    
+    # Si és factor, hem de vigilar amb els nivells (areg torna números)
+    if (is.factor(data_imputed_AREG[[col]])) {
+       levels_col <- levels(data_imputed_AREG[[col]])
+       # Convertim l'índex numèric al text del factor
+       data_imputed_AREG[[col]][is.na(data_imputed_AREG[[col]])] <- 
+         factor(levels_col[vals_imputats], levels = levels_col)
+    } else {
+       # Si és numèric, copiem directament
+       data_imputed_AREG[[col]][is.na(data_imputed_AREG[[col]])] <- vals_imputats
+    }
+  }
+}
+
+# 4. Guardar
+save(data_imputed_AREG, file = "data_NA_imputed_AREG.RData")
+```
+
+
+
+```{r}
+summary(data_imputed_AREG)
+```
+
+
+
+```{r}
+density_before_after(data, data_imputed_AREG)
+```
+
+
+
+
+
+
+
+
+
+
+
+
