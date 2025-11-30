@@ -27,8 +27,8 @@ set.seed(123)
 ###############################################################################
 
 # --- Eliminamos Surname e ID del dataset de training
-data <- data_imputed_AREG %>% dplyr::select(-Surname, -ID)
-
+data <- dataAREG_final %>% dplyr::select(-Surname, -ID)
+kaggle_raw <-dataAREG_test_final
 # Convertimos Exited a factor "No"/"Yes" si no lo está en ese formato
 if(!("Exited" %in% names(data))) stop("No encuentro la variable 'Exited' en data")
 data$Exited <- factor(as.character(data$Exited), levels = c("0","1"), labels = c("No","Yes"))
@@ -258,7 +258,7 @@ dataTest <- apply_feature_engineering(dataTest, is_train = FALSE)
 
 cat("Aplicando FE a kaggle dataset...\n")
 # Preparar kaggle dataset (eliminar ID primero, lo guardamos aparte)
-kaggle_raw <- data_imputed_AREG_test %>% dplyr::select(-Surname)
+kaggle_raw <- dataAREG_test_final %>% dplyr::select(-Surname)
 kaggle_ids <- kaggle_raw$ID
 kaggle_raw <- kaggle_raw %>% dplyr::select(-ID)
 kaggle_raw <- apply_feature_engineering(kaggle_raw, is_train = FALSE)
@@ -284,12 +284,6 @@ kaggle_x_mat <- predict(dv, newdata = kaggle_raw) %>% as.matrix()
 y_train_num <- ifelse(dataTrain$Exited == "Yes", 1L, 0L)
 y_test_num  <- ifelse(dataTest$Exited  == "Yes", 1L, 0L)
 
-# Calculo de pesos/ratio para usar en LASSO y LightGBM
-n_pos <- sum(y_train_num == 1)
-n_neg <- sum(y_train_num == 0)
-scale_pos_weight <- ifelse(n_pos == 0, 1, n_neg / n_pos)
-class_weights <- c("0" = 1, "1" = n_neg / n_pos)
-
 ###############################################################################
 # 2) MODELO: Logistic LASSO (cv.glmnet) - con weights
 ###############################################################################
@@ -304,7 +298,6 @@ cv_lasso <- cv.glmnet(
   alpha = 1,
   nfolds = 5,
   type.measure = "class",
-  weights = ifelse(y_train_num == 1, class_weights["1"], class_weights["0"])
 )
 best_lambda <- cv_lasso$lambda.min
 cat("LASSO - Best lambda:", best_lambda, "\n")
@@ -407,7 +400,6 @@ for(i in seq_along(folds)) {
     alpha = 1,
     nfolds = 5,
     type.measure = "class",
-    weights = ifelse(y_dtr == 1, class_weights["1"], class_weights["0"])
   )
   lasso_fold_prob <- predict(cv_tmp, newx = Matrix::Matrix(x_dval, sparse = TRUE), s = "lambda.min", type = "response")[,1]
   oof_lasso[val_idx] <- lasso_fold_prob

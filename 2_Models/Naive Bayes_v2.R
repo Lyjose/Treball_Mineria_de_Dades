@@ -12,19 +12,12 @@ lapply(packages, install_if_missing)
 
 set.seed(123)
 
-load("dataAREG_outliers.RData")
-data <- data_imputed_AREG[,-c(7,18)]
-
-seleccio = c("Age","IsActiveMember","MaritalStatus","EstimatedSalary", 
-             "SavingsAccountFlag","NumOfProducts","Gender","AvgTransactionAmount",
-             "Geography","EducationLevel","HasCrCard")
+data <- dataAREG_final[,-c(1,2)]
 
 Index <- sample(1:nrow(data), size = nrow(data)*0.8)
 dataTrain <- data[Index, ]
 dataTest  <- data[-Index, ]
-# Filtrar las variables seleccionadas del conjunto de datos
-dataTrain_subset <- dataTrain[, c("Exited", seleccio)]
-dataTest_subset <- dataTrain[, c("Exited", seleccio)]
+
 
 dataTrain$Exited <- factor(dataTrain$Exited, levels = c(0,1), labels = c("No", "Yes"))
 dataTest$Exited  <- factor(dataTest$Exited,  levels = c(0,1), labels = c("No", "Yes"))
@@ -85,8 +78,8 @@ print(modelo_nb2)
 
 
 # Predicciones (selecciona automaticamente los mejores parametros)
-pred_class <- predict(modelo_nb2, newdata = dataTest, type = "raw")
-pred_prob  <- predict(modelo_nb2, newdata = dataTest, type = "prob")
+pred_class <- predict(modelo_nb, newdata = dataTest, type = "raw")
+pred_prob  <- predict(modelo_nb, newdata = dataTest, type = "prob")
 cm <- confusionMatrix(pred_class, dataTest$Exited, positive = "Yes")
 print(cm)
 
@@ -97,7 +90,7 @@ print(cm)
 
 
 # Esto es una mierda, se puede hacer tb tuning del llindar
-probs <- predict(modelo_nb2, newdata = dataTest, type = "prob")[, "Yes"]
+probs <- predict(modelo_nb, newdata = dataTest, type = "prob")[, "Yes"]
 preds <- ifelse(probs > 0.2, "Yes", "No")
 confusionMatrix(factor(preds, levels=c("No","Yes")), dataTest$Exited, positive="Yes")
 
@@ -135,7 +128,7 @@ MLmetrics::F1_Score(dataTest$Exited,preds_testtrain,"Yes")
 ################################################################################
 
 # 1. Obtener probabilidades de test
-probs_test <- predict(modelo_nb2, newdata = data_imputed_AREG_test[-6], type = "prob")[, "Yes"]
+probs_test <- predict(modelo_nb, newdata = dataAREG_test_final, type = "prob")[, "Yes"]
 
 # 2. Aplicar el mejor threshold encontrado
 best_threshold <- threshold_f1_df$Threshold[which.max(threshold_f1_df$F1_Score)]
@@ -144,9 +137,9 @@ pred_test <- ifelse(probs_test > best_threshold, "Yes", "No")
 
 # 3. Crear el dataframe de submission
 submission <- data.frame(
-  ID = data_imputed_AREG_test$ID,
+  ID = dataAREG_test_final$ID,
   Exited = pred_test
 )
 
 # 4. Guardar el CSV
-write.csv(submission, "submission_nb_outliers_Smote.csv", row.names = FALSE)
+write.csv(submission, "submission_nb_Smote.csv", row.names = FALSE)
