@@ -6,7 +6,8 @@ library(doParallel)
 library(splines)
 
 data = dataAREG_final[,-c(1,2)]
-
+library(dplyr)
+data <- data %>% mutate(across(where(is.numeric), scale))
 ############################ Descriptiva #####################################
 
 vars = colnames(data)[-21]
@@ -52,12 +53,13 @@ plot(mod2)
 plot(mod3)
 
 prob1 = predict(mod1, newdata = dataTest, type="response")
-pred1 = ifelse( prob1 > 0.2,"Yes","No")
+pred1 = ifelse( prob1 > 0.5,"Yes","No")
 
 MLmetrics::F1_Score(dataTest$Exited,pred1)
 MLmetrics::Sensitivity(dataTest$Exited,pred1)
 
 ############################ Modelatge amb splines #############################
+library(splines)
 
 mod_splines <- glm(
   Exited ~  
@@ -66,16 +68,11 @@ mod_splines <- glm(
     ns(CreditScore, df = 3) +           
     ns(Balance, df = 2) +                # Balance puede tener efectos no lineales
     ns(Tenure, df = 3) +                 # Tenure al cuadrado típicamente
-    ns(NetPromoterScore, df = 3) +
-    ns(TransactionFrequency, df = 3) +
-    ns(AvgTransactionAmount, df = 3) +
-    ns(DigitalEngagementScore, df = 3) +
     ns(EstimatedSalary,df=3) +                    # Linear si no hay evidencia
     
     # Variables categóricas
-    Gender + EducationLevel + LoanStatus + Geography + 
-    ComplaintsCount + HasCrCard + IsActiveMember + 
-    CustomerSegment + MaritalStatus + SavingsAccountFlag + 
+    Gender + Geography + 
+    HasCrCard + IsActiveMember + 
     NumOfProducts,
   
   family = binomial(link = "logit"),
@@ -94,36 +91,8 @@ plot(mod_splines)
 summary(mod_splines)
 AIC(mod1);AIC(mod_splines)
 
-############################ Modelatge amb splines #############################
 
-
-mod_splines2 <- glm(
-  Exited ~
-    # Variables continuas con splines (3-5 grados de libertad)
-    ns(Age, df = 4) +                    # Relación en U con edad
-    ns(NetPromoterScore, df = 1) +
-
-    Gender + EducationLevel + Geography + 
-    IsActiveMember + NumOfProducts,
-  
-  family = binomial(link = "logit"),
-  data = dataTrain
-)
-
-AIC(mod1);AIC(mod_splines);AIC(mod_splines2)
-
-plot(mod_splines2)
-
-summary(mod_splines2)
-
-prob3 = predict(mod_splines2, newdata = dataTest, type="response")
-pred3= ifelse( prob3 > 0.1,"Yes","No")
-
-MLmetrics::F1_Score(dataTest$Exited,pred3)
-MLmetrics::Specificity(dataTest$Exited,pred3)
-
-
-ConfusionMatrix(pred3,dataTest$Exited)
+ConfusionMatrix(pred2,dataTest$Exited)
 
 ######################### ELASTIC NET #########################################
 cl <- makeCluster(detectCores() - 1)
@@ -131,18 +100,15 @@ registerDoParallel(cl)
 
 # Fórmula con splines
 formula_completa <- Exited ~ 
-  ns(Age, df = 4) +
-  ns(CreditScore, df = 2) +
-  ns(Balance, df = 2) +
-  ns(Tenure, df = 1) +
-  ns(NetPromoterScore, df = 3) +
-  ns(TransactionFrequency, df = 1) +
-  ns(AvgTransactionAmount, df = 1) +
-  ns(DigitalEngagementScore, df = 1) +
-  EstimatedSalary +
-  Gender + EducationLevel + LoanStatus + Geography + 
-  ComplaintsCount + HasCrCard + IsActiveMember + 
-  CustomerSegment + MaritalStatus + SavingsAccountFlag + 
+  ns(Age, df = 4) +                    # Relación en U con edad
+  ns(CreditScore, df = 3) +           
+  ns(Balance, df = 2) +                # Balance puede tener efectos no lineales
+  ns(Tenure, df = 3) +                 # Tenure al cuadrado típicamente
+  ns(EstimatedSalary,df=3) +                    # Linear si no hay evidencia
+  
+  # Variables categóricas
+  Gender + Geography + 
+  HasCrCard + IsActiveMember + 
   NumOfProducts
 
 # TODAS las interacciones de orden 2
@@ -156,7 +122,8 @@ train_control_f1 <- trainControl(
   classProbs = TRUE,
   summaryFunction = f1,     
   verboseIter = TRUE,
-  allowParallel = TRUE
+  allowParallel = TRUE,
+  sampling = "smote"
 )
 
 # Grid de hiperparámetros
@@ -177,7 +144,7 @@ elastic_f1 <- train(
 
 
 prob3 = predict(elastic_f1, newdata = dataTest, type="prob")
-pred3 = ifelse( prob3 > 0.25,"Yes","No")[,2]
+pred3 = ifelse( prob3 > 0.5,"Yes","No")[,2]
 
 MLmetrics::F1_Score(dataTest$Exited,pred3)
 MLmetrics::Specificity(dataTest$Exited,pred3)
@@ -221,14 +188,14 @@ MLmetrics::F1_Score(dataTest$Exited,preds_testtrain,"Yes")
 ################################################################################
 
 # 1. Obtener probabilidades de test
-probs_test <- predict(elastic_f1, newdata = data_imputed_AREG_test[-6], type = "prob")[, "Yes"]
+probs_test <- predict(elastic_f1, newdata = dataAREG_test_final, type = "prob")[, "Yes"]
 
-pred_test <- ifelse(probs_test > 0.25, "Yes", "No")
+pred_test <- ifelse(probs_test > 0.57, "Yes", "No")
 
 
 # 3. Crear el dataframe de submission
 submission <- data.frame(
-  ID = data_imputed_AREG_test$ID,
+  ID = dataAREG_test_final$ID,
   Exited = pred_test
 )
 
