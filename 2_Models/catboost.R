@@ -8,7 +8,7 @@ set.seed(123)
 ### 1. PREPARAR LOS DATOS  ####
 ###############################
 
-data <- data_imputed_AREG[,-c(7,18)]
+data <- data_imputed_MICE[,-c(7,18)]
 Index <- sample(1:nrow(data), size = nrow(data)*0.8)
 dataTrain <- data[Index, ]
 dataTest  <- data[-Index, ]
@@ -161,7 +161,7 @@ MLmetrics::F1_Score(preds_test,dataTest$Exited_num)
 ################################################################################
 
 # 1. Obtener probabilidades de test
-Test = data_imputed_AREG_test[-6]
+Test = data_imputed_MICE_test[-6]
 test_pool_kaggle <- catboost.load_pool(
   data = Test
 )
@@ -177,10 +177,10 @@ pred_test <- ifelse(probs_test > best_threshold, "Yes", "No")
 
 # 3. Crear el dataframe de submission
 submission <- data.frame(
-  ID = data_imputed_AREG_test$ID,
+  ID = data_imputed_MICE_test$ID,
   Exited = pred_test
 )
 
 # 4. Guardar el CSV
-write.csv(submission, "submission_catboost.csv", row.names = FALSE)
+write.csv(submission, "submission_catboost2.csv", row.names = FALSE)
 
