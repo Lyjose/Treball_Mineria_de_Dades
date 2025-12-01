@@ -10,7 +10,7 @@ data$ID <- NULL
 data$Surname <- NULL
 data$Exited <- as.numeric(as.character(data$Exited))
 
-Index <- createDataPartition(data$Exited, p = 0.8, list = FALSE)
+Index <- createDataPartition(data$Exited, p = 0.7, list = FALSE)
 dataTrain <- data[Index, ]
 dataTest  <- data[-Index, ]
 
@@ -110,7 +110,7 @@ probs_test <- predict(bst, newdata = test_m2)
 
 # 2. Aplicar el mejor threshold encontrado
 best_threshold <- threshold_f1_df$Threshold[which.max(threshold_f1_df$F1_Score)]
-pred_test <- ifelse(probs_test > best_threshold, "YES", "NO")
+pred_test <- ifelse(probs_test > best_threshold, "Yes", "No")
 
 
 # 3. Crear el dataframe de submission
@@ -120,4 +120,4 @@ submission <- data.frame(
 )
 
 # 4. Guardar el CSV
-write.csv(submission, "submission_LightGBM_v2.csv", row.names = FALSE)
+write.csv(submission, "submission_LightGBM_v2_01.csv", row.names = FALSE)
