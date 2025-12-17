@@ -1,0 +1,80 @@
+---
+title: "SVM poly"
+output: html_document
+date: "2025-12-01"
+---
+
+```{r}
+load("C:/Users/Usuario/Downloads/data_Final_AREG_test.RData")
+load("C:/Users/Usuario/Downloads/data_Final_AREG_train.RData")
+data<-dataAREG_final
+
+######### PUNTO 1 ###########
+#Usar TODOS set.seed(123) y cargar estos paquetes
+set.seed(123)
+usePackage <- function(p) {    
+    if (!is.element(p, installed.packages()[,1]))
+        install.packages(p, dep = TRUE)
+    require(p, character.only = TRUE)
+}
+
+usePackage("smotefamily")
+usePackage("MLmetrics")
+usePackage("class")
+usePackage("knitr")
+usePackage("kernlab")
+usePackage("caret")
+usePackage("ROCR")
+######### PUNTO 2 ###########
+#Para la partición interna del train en train/test, usaremos un 80% TRAIN, 20% TEST, por ejemplo:
+  Index <- sample(1:nrow(data), size = nrow(data)*0.8)
+  dataTrain <- data[Index, ]
+  dataTest  <- data[-Index, ]
+
+```
+
+```{r}
+######### PUNTO 3 ###########
+#Al entrenar los modelos, caret no trae incorporado una metrica de F1, para entrenar todos los modelos y evaluarlos bajo la misma metrica, usaremos esta función:
+# F1
+  f1 <- function(data, lev = NULL, model = NULL) {
+    f1_val <- MLmetrics::F1_Score(y_pred = data$pred, y_true = data$obs, positive = "Yes")
+    c(F1 = f1_val)
+  }
+
+# Tb hay que cambiar la label de Exited para la función F1
+dataTrain$Exited <- factor(dataTrain$Exited, levels = c(0,1), labels = c("No", "Yes"))
+dataTest$Exited  <- factor(dataTest$Exited,  levels = c(0,1), labels = c("No", "Yes"))
+
+
+# Hay que especificar en el control que se use f1 en summaryFunction ,también smote esta aqui en sampling
+  control <- trainControl(
+    method = "repeatedcv",
+    number = 10,
+    repeats = 10,
+    classProbs = TRUE,
+    summaryFunction = f1,
+    sampling = "smote",
+    verboseIter = TRUE
+  )
+
+#Y en el modelo = train(....,trControl = control, metric = "F1", ... )
+  dataTrain<-dataTrain[-c(1,2)]
+    dataTest<-dataTest[-c(1,2)]
+```
+
+### SVM poly
+```{r eval=FALSE, include=FALSE}
+modelo_poly <- train(
+  Exited ~ .,
+  data = dataTrain,
+  method = "svmPoly",
+  metric = "F1",
+  trControl = control,
+  tuneLength = 1
+)
+
+pred_poly <- predict(modelo_poly, dataTest)
+confusionMatrix(pred_poly, dataTest$Exited,positive = "Yes")
+f1_test_poly <- F1_Score(  y_pred = pred_poly,  y_true = dataTest$Exited, positive = "Yes")
+```

@@ -1,0 +1,346 @@
+---
+title: "SVM lineal"
+output: html_document
+date: "2025-11-30"
+---
+
+```{r}
+load("C:/Users/Usuario/Downloads/data_Final_AREG_test.RData")
+load("C:/Users/Usuario/Downloads/data_Final_AREG_train.RData")
+data<-dataAREG_final
+
+######### PUNTO 1 ###########
+#Usar TODOS set.seed(123) y cargar estos paquetes
+set.seed(123)
+usePackage <- function(p) {    
+    if (!is.element(p, installed.packages()[,1]))
+        install.packages(p, dep = TRUE)
+    require(p, character.only = TRUE)
+}
+
+usePackage("smotefamily")
+usePackage("MLmetrics")
+usePackage("class")
+usePackage("knitr")
+usePackage("kernlab")
+usePackage("caret")
+usePackage("ROCR")
+######### PUNTO 2 ###########
+#Para la partición interna del train en train/test, usaremos un 80% TRAIN, 20% TEST, por ejemplo:
+  Index <- sample(1:nrow(data), size = nrow(data)*0.8)
+  dataTrain <- data[Index, ]
+  dataTest  <- data[-Index, ]
+
+```
+
+
+
+####ORIGINAL
+```{r eval=FALSE, include=FALSE}
+######### PUNTO 3 ###########
+#Al entrenar los modelos, caret no trae incorporado una metrica de F1, para entrenar todos los modelos y evaluarlos bajo la misma metrica, usaremos esta función:
+# F1
+  f1 <- function(data, lev = NULL, model = NULL) {
+    f1_val <- MLmetrics::F1_Score(y_pred = data$pred, y_true = data$obs, positive = "Yes")
+    c(F1 = f1_val)
+  }
+
+# Tb hay que cambiar la label de Exited para la función F1
+dataTrain$Exited <- factor(dataTrain$Exited, levels = c(0,1), labels = c("No", "Yes"))
+dataTest$Exited  <- factor(dataTest$Exited,  levels = c(0,1), labels = c("No", "Yes"))
+
+
+
+# Hay que especificar en el control que se use f1 en summaryFunction ,también smote esta aqui en sampling
+  control <- trainControl(
+    method = "repeatedcv",
+    number = 10,
+    repeats = 10,
+    classProbs = TRUE,
+    summaryFunction = f1,
+    sampling = "smote",
+    verboseIter = TRUE
+  )
+
+#Y en el modelo = train(....,trControl = control, metric = "F1", ... )
+  dataTrain<-dataTrain[-c(1,2)]
+    dataTest<-dataTest[-c(1,2)]
+
+    
+modelo_linear <- train(
+  Exited ~ .,
+  data = dataTrain,
+  method = "svmLinear",
+  trControl = control,
+  metric = "F1",
+  tuneLength = 10
+)
+
+pred_linear <- predict(modelo_linear, dataTest)
+confusionMatrix(pred_linear, dataTest$Exited,positive = "Yes")
+f1_test_linear <- F1_Score(  y_pred = pred_linear,  y_true = dataTest$Exited, positive = "Yes")
+```
+
+######### SVM - SMOTE + tuneGrid + CV simple + threshold optimizado ###########
+
+```{r}
+
+f1 <- function(data, lev = NULL, model = NULL) {
+  f1_val <- MLmetrics::F1_Score(y_pred = data$pred, y_true = data$obs, positive = "Yes")
+  c(F1 = f1_val)
+}
+
+dataTrain$Exited <- factor(dataTrain$Exited, levels = c(0,1), labels = c("No", "Yes"))
+dataTest$Exited  <- factor(dataTest$Exited,  levels = c(0,1), labels = c("No", "Yes"))
+
+grid <- expand.grid(C = c(0.001, 0.01, 0.1, 1))
+
+control <- trainControl(
+  method = "cv",           
+  number = 10,
+  classProbs = TRUE,
+  summaryFunction = f1,    
+  sampling = "smote",
+  verboseIter = TRUE
+)
+
+dataTrain <- dataTrain[-c(1,2)]
+dataTest <- dataTest[-c(1,2)]
+
+modelo_linear <- train(
+  Exited ~ .,
+  data = dataTrain,
+  method = "svmLinear",
+  preProcess = c("center","scale"),
+  trControl = control,
+  metric = "F1",
+  tuneGrid = grid
+)
+
+prob_linear <- predict(modelo_linear, dataTest, type="prob")[,"Yes"]
+ths <- seq(0.1, 0.9, by=0.01)
+f1s <- sapply(ths, function(t){
+  preds <- ifelse(prob_linear > t,"Yes","No")
+  F1_Score(y_pred=preds, y_true=dataTest$Exited, positive="Yes")
+})
+best_threshold <- ths[which.max(f1s)]
+best_f1 <- max(f1s)
+
+cat("Mejor threshold:", best_threshold, "\n")
+cat("F1 test:", best_f1, "\n")
+
+pred_linear_final <- ifelse(prob_linear > best_threshold,"Yes","No")
+conf_matrix <- confusionMatrix(factor(pred_linear_final, levels=c("No","Yes")), dataTest$Exited, positive="Yes")
+print(conf_matrix)
+
+```
+
+##### SVM - Downsampling + tuneLength + CV simple + threshold optimizado ########
+
+```{r}
+
+f1 <- function(data, lev = NULL, model = NULL) {
+  f1_val <- MLmetrics::F1_Score(y_pred=data$pred, y_true=data$obs, positive="Yes")
+  c(F1=f1_val)
+}
+
+dataTrain$Exited <- factor(dataTrain$Exited, levels=c(0,1), labels=c("No","Yes"))
+dataTest$Exited  <- factor(dataTest$Exited, levels=c(0,1), labels=c("No","Yes"))
+
+control <- trainControl(
+  method = "cv",
+  number = 5,
+  classProbs = TRUE,
+  summaryFunction = f1,
+  sampling = "down",
+  verboseIter = TRUE
+)
+
+dataTrain <- dataTrain[-c(1,2)]
+dataTest <- dataTest[-c(1,2)]
+
+modelo_linear <- train(
+  Exited ~ .,
+  data=dataTrain,
+  method="svmLinear",
+  preProcess=c("center","scale"),
+  trControl=control,
+  metric="F1",
+  tuneLength=10
+)
+
+prob_linear <- predict(modelo_linear, dataTest, type="prob")[,"Yes"]
+ths <- seq(0.1,0.9,by=0.01)
+f1s <- sapply(ths, function(t){
+  preds <- ifelse(prob_linear>t,"Yes","No")
+  F1_Score(y_pred=preds, y_true=dataTest$Exited, positive="Yes")
+})
+best_threshold <- ths[which.max(f1s)]
+best_f1 <- max(f1s)
+
+cat("Mejor threshold:", best_threshold, "\n")
+cat("F1 test:", best_f1, "\n")
+
+pred_linear_final <- ifelse(prob_linear>best_threshold,"Yes","No")
+conf_matrix <- confusionMatrix(factor(pred_linear_final, levels=c("No","Yes")), dataTest$Exited, positive="Yes")
+print(conf_matrix)
+
+```
+
+###### SVM - Downsampling + tuneGrid + repeatedCV + threshold optimizado ######
+
+```{r}
+f1 <- function(data, lev=NULL, model=NULL){
+  f1_val <- MLmetrics::F1_Score(y_pred=data$pred, y_true=data$obs, positive="Yes")
+  c(F1=f1_val)
+}
+
+dataTrain$Exited <- factor(dataTrain$Exited, levels=c(0,1), labels=c("No","Yes"))
+dataTest$Exited  <- factor(dataTest$Exited, levels=c(0,1), labels=c("No","Yes"))
+
+grid <- expand.grid(C=c(0.001,0.01,0.1,1))
+
+control <- trainControl(
+  method="repeatedcv",
+  number=5,
+  repeats=5,
+  classProbs=TRUE,
+  summaryFunction=f1,
+  sampling="down",
+  verboseIter=TRUE
+)
+
+dataTrain <- dataTrain[-c(1,2)]
+dataTest <- dataTest[-c(1,2)]
+
+modelo_linear <- train(
+  Exited~.,
+  data=dataTrain,
+  method="svmLinear",
+  preProcess=c("center","scale"),
+  trControl=control,
+  metric="F1",
+  tuneGrid=grid
+)
+
+prob_linear <- predict(modelo_linear, dataTest, type="prob")[,"Yes"]
+ths <- seq(0.1,0.9,by=0.01)
+f1s <- sapply(ths, function(t){
+  preds <- ifelse(prob_linear>t,"Yes","No")
+  F1_Score(y_pred=preds, y_true=dataTest$Exited, positive="Yes")
+})
+best_threshold <- ths[which.max(f1s)]
+best_f1 <- max(f1s)
+
+cat("Mejor threshold:", best_threshold, "\n")
+cat("F1 test:", best_f1, "\n")
+
+pred_linear_final <- ifelse(prob_linear>best_threshold,"Yes","No")
+conf_matrix <- confusionMatrix(factor(pred_linear_final, levels=c("No","Yes")), dataTest$Exited, positive="Yes")
+print(conf_matrix)
+
+```
+
+######### SVM - Downsampling + tuneGrid + CV simple + threshold 0.5 ###########
+
+```{r}
+f1 <- function(data, lev=NULL, model=NULL){
+  f1_val <- MLmetrics::F1_Score(y_pred=data$pred, y_true=data$obs, positive="Yes")
+  c(F1=f1_val)
+}
+
+dataTrain$Exited <- factor(dataTrain$Exited, levels=c(0,1), labels=c("No","Yes"))
+dataTest$Exited  <- factor(dataTest$Exited, levels=c(0,1), labels=c("No","Yes"))
+
+grid <- expand.grid(C=c(0.001,0.01,0.1,1))
+
+control <- trainControl(
+  method="cv",
+  number=5,
+  classProbs=TRUE,
+  summaryFunction=f1,
+  sampling="down",
+  verboseIter=TRUE
+)
+
+dataTrain <- dataTrain[-c(1,2)]
+dataTest <- dataTest[-c(1,2)]
+
+modelo_linear <- train(
+  Exited~.,
+  data=dataTrain,
+  method="svmLinear",
+  preProcess=c("center","scale"),
+  trControl=control,
+  metric="F1",
+  tuneGrid=grid
+)
+
+# Threshold fijo en 0.5
+pred_linear_final <- predict(modelo_linear, dataTest)
+f1_test_linear <- F1_Score(y_pred=pred_linear_final, y_true=dataTest$Exited, positive="Yes")
+
+cat("F1 test con threshold 0.5:", f1_test_linear, "\n")
+
+conf_matrix <- confusionMatrix(factor(pred_linear_final, levels=c("No","Yes")), dataTest$Exited, positive="Yes")
+print(conf_matrix)
+
+```
+
+
+####### SVM - Downsampling + tuneGrid + CV simple + threshold optimizado #######
+
+```{r}
+
+f1 <- function(data, lev=NULL, model=NULL){
+  f1_val <- MLmetrics::F1_Score(y_pred=data$pred, y_true=data$obs, positive="Yes")
+  c(F1=f1_val)
+}
+
+dataTrain$Exited <- factor(dataTrain$Exited, levels=c(0,1), labels=c("No","Yes"))
+dataTest$Exited  <- factor(dataTest$Exited, levels=c(0,1), labels=c("No","Yes"))
+
+grid <- expand.grid(C=c(0.001,0.01,0.1,1))
+
+control <- trainControl(
+  method="cv",
+  number=5,
+  classProbs=TRUE,
+  summaryFunction=f1,
+  sampling="down",
+  verboseIter=TRUE
+)
+
+dataTrain <- dataTrain[-c(1,2)]
+dataTest <- dataTest[-c(1,2)]
+
+modelo_linear <- train(
+  Exited~.,
+  data=dataTrain,
+  method="svmLinear",
+  preProcess=c("center","scale"),
+  trControl=control,
+  metric="F1",
+  tuneGrid=grid
+)
+
+prob_linear <- predict(modelo_linear, dataTest, type="prob")[,"Yes"]
+ths <- seq(0.1,0.9,by=0.01)
+f1s <- sapply(ths, function(t){
+  preds <- ifelse(prob_linear>t,"Yes","No")
+  F1_Score(y_pred=preds, y_true=dataTest$Exited, positive="Yes")
+})
+best_threshold <- ths[which.max(f1s)]
+best_f1 <- max(f1s)
+
+cat("Mejor threshold:", best_threshold, "\n")
+cat("F1 test:", best_f1, "\n")
+
+pred_linear_final <- ifelse(prob_linear>best_threshold,"Yes","No")
+conf_matrix <- confusionMatrix(factor(pred_linear_final, levels=c("No","Yes")), dataTest$Exited, positive="Yes")
+print(conf_matrix)
+
+```
+
+
+

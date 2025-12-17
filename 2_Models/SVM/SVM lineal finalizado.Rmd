@@ -1,0 +1,211 @@
+---
+title: "Untitled"
+output: html_document
+date: "2025-12-01"
+---
+
+
+```{r}
+load("C:/Users/Usuario/Downloads/data_Final_AREG_test.RData")
+load("C:/Users/Usuario/Downloads/data_Final_AREG_train.RData")
+data<-dataAREG_final
+
+######### PUNTO 1 ###########
+#Usar TODOS set.seed(123) y cargar estos paquetes
+set.seed(123)
+usePackage <- function(p) {    
+    if (!is.element(p, installed.packages()[,1]))
+        install.packages(p, dep = TRUE)
+    require(p, character.only = TRUE)
+}
+
+usePackage("smotefamily")
+usePackage("MLmetrics")
+usePackage("class")
+usePackage("knitr")
+usePackage("kernlab")
+usePackage("caret")
+usePackage("ROCR")
+######### PUNTO 2 ###########
+#Para la partición interna del train en train/test, usaremos un 80% TRAIN, 20% TEST, por ejemplo:
+  Index <- sample(1:nrow(data), size = nrow(data)*0.8)
+  dataTrain <- data[Index, ]
+  dataTest  <- data[-Index, ]
+
+```
+
+```{r}
+###############################
+# Script completo SVM lineal con 6 modelos
+###############################
+
+library(caret)
+library(MLmetrics)
+library(dplyr)
+
+#-----------------------------------
+# Función para entrenar un modelo
+#-----------------------------------
+entrenar_svm <- function(dataTrain, dataTest, sampling="down", cv_method="cv", number=5, repeats=1,
+                         tuneGrid=NULL, tuneLength=NULL, preProcess=TRUE, threshold="0.5", name_model="Modelo") {
+  
+  # Función F1 para caret
+  f1 <- function(data, lev=NULL, model=NULL){
+    f1_val <- MLmetrics::F1_Score(y_pred = data$pred, y_true = data$obs, positive="Yes")
+    c(F1 = f1_val)
+  }
+  
+  # Control de entrenamiento
+  control <- trainControl(
+    method = cv_method,
+    number = number,
+    repeats = repeats,
+    classProbs = TRUE,
+    summaryFunction = f1,
+    sampling = sampling,
+    verboseIter = FALSE
+  )
+  
+  preproc <- if(preProcess) c("center","scale") else NULL
+  
+  # Entrenar modelo
+  modelo <- train(
+    Exited ~ .,
+    data = dataTrain,
+    method = "svmLinear",
+    preProcess = preproc,
+    trControl = control,
+    metric = "F1",
+    tuneGrid = tuneGrid,
+    tuneLength = tuneLength
+  )
+  
+  # Inicializamos best_threshold
+  best_threshold <- NA
+  
+  # Predicciones y F1
+  if(threshold == "0.5"){   # threshold fijo
+    pred <- predict(modelo, dataTest)
+    f1_val <- F1_Score(y_pred = pred, y_true = dataTest$Exited, positive="Yes")
+  } else if(threshold == "opt"){   # threshold optimizado
+    prob <- predict(modelo, dataTest, type="prob")[,"Yes"]
+    ths <- seq(0.1,0.9,by=0.01)
+    f1s <- sapply(ths, function(t){
+      preds <- ifelse(prob > t, "Yes", "No")
+      F1_Score(y_pred = preds, y_true = dataTest$Exited, positive="Yes")
+    })
+    best_threshold <- ths[which.max(f1s)]
+    f1_val <- max(f1s)
+    pred <- ifelse(prob > best_threshold, "Yes", "No")
+  } else {
+    stop("threshold debe ser '0.5' o 'opt'")
+  }
+  
+  conf <- confusionMatrix(factor(pred, levels=c("No","Yes")), dataTest$Exited, positive="Yes")
+  
+  # Devolver todo, incluyendo best_threshold
+  return(list(name = name_model, modelo = modelo, F1 = f1_val, pred = pred, conf_matrix = conf,
+              best_threshold = best_threshold))
+}
+
+#-----------------------------------
+# Preparación de los datos
+#-----------------------------------
+# Cambiar labels para F1
+dataTrain$Exited <- factor(dataTrain$Exited, levels=c(0,1), labels=c("No","Yes"))
+dataTest$Exited  <- factor(dataTest$Exited, levels=c(0,1), labels=c("No","Yes"))
+
+# Eliminar columnas ID / Surname si están
+dataTrain <- dataTrain %>% select(-c(1,2))
+dataTest  <- dataTest %>% select(-c(1,2))
+
+# Grid para SVM
+grid <- expand.grid(C=c(0.001,0.01,0.1,1))
+
+#-----------------------------------
+# Configuraciones de los 6 modelos
+#-----------------------------------
+modelos_config <- list(
+  list(name="Original", sampling="smote", cv_method="repeatedcv", number=10, repeats=10, tuneLength=10, threshold="0.5", tuneGrid=NULL),
+  list(name="SMOTE_Grid_CV_Thresh", sampling="smote", cv_method="cv", number=10, repeats=1, tuneGrid=grid, threshold="opt", tuneLength=NULL),
+  list(name="Down_TuneLength_CV_Thresh", sampling="down", cv_method="cv", number=5, repeats=1, tuneLength=10, threshold="opt", tuneGrid=NULL),
+  list(name="Down_Grid_RepeatedCV_Thresh", sampling="down", cv_method="repeatedcv", number=5, repeats=5, tuneGrid=grid, threshold="opt", tuneLength=NULL),
+  list(name="Down_Grid_CV_0.5", sampling="down", cv_method="cv", number=5, repeats=1, tuneGrid=grid, threshold="0.5", tuneLength=NULL),
+  list(name="Down_Grid_CV_Thresh", sampling="down", cv_method="cv", number=5, repeats=1, tuneGrid=grid, threshold="opt", tuneLength=NULL)
+)
+
+#-----------------------------------
+# Entrenar todos los modelos
+#-----------------------------------
+resultados <- list()
+
+for(i in seq_along(modelos_config)){
+  conf <- modelos_config[[i]]
+  cat("\nEntrenando modelo:", conf$name, "\n")
+  
+  res <- entrenar_svm(
+    dataTrain, dataTest,
+    sampling = conf$sampling,
+    cv_method = conf$cv_method,
+    number = conf$number,
+    repeats = conf$repeats,
+    tuneGrid = conf$tuneGrid,
+    tuneLength = conf$tuneLength,
+    threshold = conf$threshold,
+    name_model = conf$name
+  )
+  
+  resultados[[conf$name]] <- res
+  cat("F1 Test:", res$F1, "\n")
+}
+
+#-----------------------------------
+# Comparación de F1
+#-----------------------------------
+f1_comparacion <- sapply(resultados, function(x) x$F1)
+print(f1_comparacion)
+
+#-----------------------------------
+# Guardar predicciones y probabilidades sobre dataTest
+#-----------------------------------
+pred_df <- data.frame(ID = rownames(dataTest))
+prob_df <- data.frame(ID = rownames(dataTest))
+
+for(nombre in names(resultados)){
+  pred_df[[nombre]] <- resultados[[nombre]]$pred
+  prob_df[[nombre]] <- predict(resultados[[nombre]]$modelo, dataTest, type="prob")[,"Yes"]
+}
+
+```
+
+```{r}
+
+#-----------------------------------
+# Predicción sobre nuevos datos (dataNew)
+#-----------------------------------
+dataNew<-dataAREG_test_final
+id_new <- dataNew$ID
+dataNew <- dataNew %>% select(-c(ID, Surname))  # eliminar columnas irrelevantes
+
+for(nombre in names(resultados)){
+  modelo <- resultados[[nombre]]$modelo
+  
+  prob <- predict(modelo, dataNew, type="prob")[, "Yes"]
+  
+  # Determinar threshold
+  if(resultados[[nombre]]$best_threshold %>% is.na()){   # threshold fijo 0.5
+    pred_new <- ifelse(prob > 0.5, "Yes", "No")
+  } else {                                               # threshold optimizado
+    pred_new <- ifelse(prob > resultados[[nombre]]$best_threshold, "Yes", "No")
+  }
+  
+  # Crear CSV de submission
+  submission <- data.frame(ID = id_new, Exited = pred_new)
+  file_name <- paste0("submission_", nombre, ".csv")
+  write.csv(submission, file_name, row.names = FALSE)
+  cat("Archivo generado:", file_name, "\n")
+}
+
+```
+
+
