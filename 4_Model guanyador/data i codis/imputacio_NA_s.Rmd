@@ -1,0 +1,200 @@
+---
+title: "Na_imput"
+author: "Sergi Renau"
+date: "2025-11-29"
+output: html_document
+---
+
+## Preparacio
+
+```{r setup, include=FALSE}
+# 1. LLIBRERIES
+library(readr)
+library(dplyr)
+library(VIM)
+library(mice)
+library(missForest)
+library(Hmisc)
+
+# 2. CARREGAR I PREPARAR
+train_raw <- read_csv("train_max_dedup.csv", col_types = cols(...1 = col_skip()))
+test_raw  <- read_csv("test.csv", col_types = cols(...1 = col_skip()))
+
+# Guardem IDs per després
+train_ids <- train_raw$ID
+test_ids  <- test_raw$ID
+
+# Unim (Afegim columna 'Set' per saber qui és qui)
+train_raw$Set <- "Train"
+test_raw$Set  <- "Test"
+test_raw$Exited <- NA # Al test no tenim la resposta, posem NA
+
+full_data <- bind_rows(train_raw, test_raw)
+
+# 3. NETEJA DE BROSSA (Les variables fake)
+vars_bones <- c("CreditScore", "Geography", "Gender", "Age", "Tenure", 
+                "Balance", "NumOfProducts", "HasCrCard", "IsActiveMember", 
+                "EstimatedSalary", "Exited", "Set") 
+
+data <- full_data %>% select(any_of(vars_bones))
+
+# 4. FACTORS
+cols_factor <- c("Geography", "Gender", "HasCrCard", "IsActiveMember", "Exited")
+for(col in cols_factor) {
+  data[[col]] <- as.factor(data[[col]])
+}
+
+cat("Dades preparades. Total files:", nrow(data), "\n")
+```
+
+```{r}
+visdat::vis_dat(data)
+```
+
+```{r}
+summary(data)
+```
+
+```{r}
+naniar::mcar_test(data)
+```
+
+```{r, results=FALSE, warning=FALSE, echo=TRUE, include=FALSE}
+density_before_after <- function(before, after) {
+    require(ggplot2)
+    
+    density_df_before <- before |> 
+        select(where(is.numeric)) |>
+        mutate(imputation = "original")
+    
+    density_df_after <- after |>
+        select(where(is.numeric)) |>
+        mutate(imputation = "imputat")
+    
+    density_df <- bind_rows(density_df_before, density_df_after) |>
+        mutate(imputation = factor(imputation)) |>
+        tidyr::pivot_longer(!imputation, names_to = "variable") |>
+        filter(!is.na(value))
+    
+    ggplot(density_df, aes(x = value, color = imputation, fill = imputation)) +
+        facet_wrap(~variable, scales = "free") +
+        geom_histogram(alpha = 0.2, width = 0.1, bins = 30, position = "dodge") +
+        scale_color_discrete(aesthetics = c("color", "fill"), name = "") +
+        scale_y_continuous(breaks = NULL) +
+        xlab("") +
+        ylab("") +
+        ggtitle("Densitat abans i després de la imputació.") +
+        theme_minimal() +
+        theme(panel.grid = element_blank())
+}
+```
+
+
+## MICE:
+
+
+```{r, results=FALSE, warning=FALSE, echo=TRUE, include=FALSE}
+## MICE: IMPUTACIÓ CONJUNTA
+cat("\n--- MICE ---\n")
+# Traiem la columna 'Set' pq no serveix per imputar
+data_mice_in <- data %>% select(-Set)
+
+set.seed(28657)
+mice_out <- mice(data_mice_in, m=10, maxit=10) # Menys iteracions per anar ràpid
+data_MICE_full <- complete(mice_out)
+
+# Recuperem l'etiqueta Set
+data_MICE_full$Set <- data$Set
+data_MICE_full$ID <- c(train_ids, test_ids)
+data_MICE_full$Surname <- c(train_raw$Surname, test_raw$Surname)
+
+# Separem i Guardem
+data_imputed_MICE <- filter(data_MICE_full, Set == "Train") %>% select(-Set)
+data_imputed_MICE_test <- filter(data_MICE_full, Set == "Test") %>% select(-Set, -Exited)
+
+save(data_imputed_MICE, file="data_NA_imputed_MICE.RData")
+save(data_imputed_MICE_test, file="data_NA_imputed_MICE_test.RData")
+```
+
+
+```{r}
+# 1. Recuperem només la part ORIGINAL que correspon al TEST
+# (Fem servir la columna 'Set' que has creat al principi)
+data_test_original <- data %>% 
+  filter(Set == "Test") %>%
+  select(-Set) # Traiem la columna Set per neteja
+
+# 2. Ara ja podem comparar (3000 files vs 3000 files)
+# Substitueix 'data_imputed_MICE_test' pel nom de la variable que toqui (KNN, AREG...)
+density_before_after(data_test_original, data_imputed_MICE_test)
+```
+
+```{r}
+# Per comparar la imputació del Train
+data_train_original <- data %>% filter(Set == "Train")
+density_before_after(data_train_original, data_imputed_MICE)
+```
+
+
+## Imputació per Bootstrap:
+
+Amb la funció *aregImpute()* podrem fer imputació de les dades faltants basada en regressions amb splines. Utilitza regressió aditiva amb splines per a variables numèriques i regressió logística per a les categòriques.
+
+```{r, results=FALSE, message=FALSE, warning=FALSE, echo=TRUE, include=FALSE}
+cat("\n--- AREG ---\n")
+# Convertim a DF clàssic i factors correctes
+data_areg_in <- as.data.frame(data) %>% select(-Set)
+data_areg_in$NumOfProducts <- as.factor(data_areg_in$NumOfProducts)
+data_areg_in <- droplevels(data_areg_in)
+
+areg_out <- aregImpute(~ Gender + HasCrCard + IsActiveMember + Geography + 
+                         Tenure + Balance + Age + EstimatedSalary + CreditScore + NumOfProducts,
+                       data = data_areg_in, n.impute = 5, nk = 5, match = 'closest')
+
+# Reconstrucció
+imputed_list <- areg_out$imputed
+data_AREG_full <- data # Copia de l'original unit
+
+for (col in names(imputed_list)) {
+  if (!is.null(imputed_list[[col]])) {
+    vals <- imputed_list[[col]][, 3]
+    if (is.factor(data_AREG_full[[col]])) {
+       levs <- levels(data_areg_in[[col]])
+       data_AREG_full[[col]][is.na(data_AREG_full[[col]])] <- levs[vals]
+    } else {
+       data_AREG_full[[col]][is.na(data_AREG_full[[col]])] <- vals
+    }
+  }
+}
+
+# Separem i Guardem
+data_AREG_full$ID <- c(train_ids, test_ids)
+data_AREG_full$Surname <- c(train_raw$Surname, test_raw$Surname)
+
+data_imputed_AREG <- filter(data_AREG_full, Set == "Train") %>% select(-Set)
+data_imputed_AREG_test <- filter(data_AREG_full, Set == "Test") %>% select(-Set)
+
+save(data_imputed_AREG, file="data_NA_imputed_AREG.RData")
+save(data_imputed_AREG_test, file="data_NA_imputed_AREG_test.RData")
+```
+
+
+```{r}
+# 1. Recuperem només la part ORIGINAL que correspon al TEST
+# (Fem servir la columna 'Set' que has creat al principi)
+data_test_original <- data %>% 
+  filter(Set == "Test") %>%
+  select(-Set) # Traiem la columna Set per neteja
+
+# 2. Ara ja podem comparar (3000 files vs 3000 files)
+# Substitueix 'data_imputed_MICE_test' pel nom de la variable que toqui (KNN, AREG...)
+density_before_after(data_test_original, data_imputed_AREG_test)
+```
+
+```{r}
+# Per comparar la imputació del Train
+data_train_original <- data %>% filter(Set == "Train")
+density_before_after(data_train_original, data_imputed_AREG) # O la variable del train
+```
+
+

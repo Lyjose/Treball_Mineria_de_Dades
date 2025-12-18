@@ -1,0 +1,211 @@
+---
+title: "Outliers"
+author: "Guillermo II de Prusia"
+date: "2025-09-30"
+output: pdf_document
+---
+
+```{r eval=FALSE, include=FALSE}
+install.packages("readr")
+install.packages("dplyr")
+install.packages("tibble")
+install.packages("ggplot2")
+install.packages("knitr")
+install.packages("tidyr")
+install.packages("dlookr")
+install.packages("dplyr")
+install.packages("Rlof")
+library(Rlof)
+library(readr)
+library(dplyr)
+library(tibble)
+library(ggplot2)
+library(knitr)    
+library(tidyr)
+library(dlookr)
+library(dplyr)
+```
+
+
+############################# MICE ###############################################
+```{r}
+# 1. CARREGUEM DADES (Fitxer netejat de variables brossa)
+load("data_NA_imputed_MICE.RData")
+data <- data_imputed_MICE
+
+# Neteja de factors (Igual que AREG)
+for(i in 1:ncol(data)){
+  if(is.character(data[[i]])==TRUE){
+    data[[i]] = as.factor(data[[i]])
+  }
+}
+
+data$HasCrCard <- as.factor(data$HasCrCard)
+data$IsActiveMember <- as.factor(data$IsActiveMember)
+# ELIMINADA: data$SavingsAccountFlag <- as.factor(data$SavingsAccountFlag) (Ja no existeix)
+data$Exited <- as.factor(data$Exited)
+
+# IDs fora per l'anàlisi
+data_clean <- subset(data, select = -c(Surname, ID))
+```
+
+```{r Prepo}
+# Selecció automàtica de numèriques
+# diagnose_numeric(data_clean) # Opcional
+data_num <- data_clean[, sapply(data_clean, is.numeric)]
+varNum <- colnames(data_num)
+```
+
+
+```{r Boxplot}
+par(mfrow = c(1,1))
+for(i in 1:length(data_num)){
+  boxplot(data_num[i])
+  
+}
+```
+
+```{r Z score}
+variable<-colnames(data_num)
+umbral<-vector(length=11)
+for(i in 1:length(data_num)){
+  valorEscalado <- scale(data_num[, variable[i]])
+hist(valorEscalado)
+title(variable[i])
+}
+
+```
+
+
+
+
+
+```{r Distancia Mahalanobis}
+# Càlcul estricte (amb scale)
+distancia_mahalanobis <- mahalanobis(scale(data_num),
+                                     colMeans(scale(data_num)),
+                                     cov(scale(data_num)))
+
+# Llindar 95% Chi-quadrat
+umbral_m <- qchisq(0.95, df = length(varNum))
+
+outliers.M <- which(distancia_mahalanobis > umbral_m)
+cat("Outliers Mahalanobis (MICE):", length(outliers.M), "\n")
+
+```
+
+```{r LOF}
+# Càlcul estricte amb k=5 i scale
+outliers.scores <- Rlof::lof(scale(data_num), k = 5)
+
+# Llindar 95% Quantil
+umbrall <- quantile(outliers.scores, 0.95, na.rm = TRUE)
+
+outliers.L <- which(outliers.scores > umbrall)
+cat("Outliers LOF (MICE):", length(outliers.L), "\n")
+```
+
+```{r Comprovar}
+# Intersecció (Només eliminem si els dos mètodes estan d'acord)
+iguales <- intersect(outliers.M, outliers.L)
+
+cat("Files a eliminar (Intersecció MICE):", length(iguales), "\n")
+
+# Eliminació
+if(length(iguales) > 0){
+  data <- data[-iguales, ]
+}
+
+# Guardem resultat final per al model
+dataMICE_final <- data
+save(dataMICE_final, file = "data_Final_MICE_train.RData")
+```
+
+############################# AREG ###############################################
+```{r}
+# 1. CARREGUEM DADES (La versió nova amb només columnes importants)
+load("data_NA_imputed_AREG.RData") 
+data <- data_imputed_AREG
+
+# Neteja de factors (Estrictament com el teu codi, però sense SavingsAccountFlag)
+for(i in 1:ncol(data)){
+  if(is.character(data[[i]])==TRUE){
+    data[[i]] = as.factor(data[[i]])
+  }
+}
+
+data$HasCrCard <- as.factor(data$HasCrCard)
+data$IsActiveMember <- as.factor(data$IsActiveMember)
+# data$SavingsAccountFlag <- as.factor(data$SavingsAccountFlag) <-- ELIMINADA (Ja no existeix)
+data$Exited <- as.factor(data$Exited)
+
+# IDs fora per l'anàlisi (com feies tu amb subset select=-Surname)
+data_clean <- subset(data, select = -c(Surname, ID))
+```
+
+```{r Prepo}
+# Selecció automàtica de numèriques (com al teu codi)
+data_num <- data_clean[, sapply(data_clean, is.numeric)]
+varNum <- colnames(data_num)
+```
+
+
+```{r Boxplot}
+par(mfrow = c(1,1))
+for(i in 1:length(data_num)){
+  boxplot(data_num[i])
+  
+}
+```
+
+```{r Z score}
+variable<-colnames(data_num)
+umbral<-vector(length=11)
+for(i in 1:length(data_num)){
+  valorEscalado <- scale(data_num[, variable[i]])
+hist(valorEscalado)
+title(variable[i])
+}
+
+```
+
+
+```{r Distancia Mahalanobis}
+# Càlcul estricte segons el teu codi
+distancia_mahalanobis <- mahalanobis(scale(data_num),
+                                     colMeans(scale(data_num)),
+                                     cov(scale(data_num)))
+
+# Llindar 95% Chi-quadrat (Com tenies al codi)
+umbral_m <- qchisq(0.95, df = length(varNum))
+
+outliers.M <- which(distancia_mahalanobis > umbral_m)
+cat("Outliers Mahalanobis:", length(outliers.M), "\n")
+```
+
+```{r LOF}
+# Càlcul estricte amb k=5
+outliers.scores <- Rlof::lof(scale(data_num), k = 5)
+
+# Llindar 95% Quantil (Com tenies al codi)
+umbrall <- quantile(outliers.scores, 0.95, na.rm = TRUE)
+
+outliers.L <- which(outliers.scores > umbrall)
+cat("Outliers LOF:", length(outliers.L), "\n")
+```
+
+```{r Comprovacio final}
+# Intersecció (Només eliminem si els dos estan d'acord)
+iguales <- intersect(outliers.M, outliers.L)
+
+cat("Files a eliminar (Intersecció):", length(iguales), "\n")
+
+# Eliminació (NOMÉS AL TRAIN ES POT FER AIXÒ)
+if(length(iguales) > 0){
+  data <- data[-iguales, ]
+}
+
+# Guardem resultat final per al model
+dataAREG_final <- data
+save(dataAREG_final, file = "data_Final_AREG_train.RData")
+```
