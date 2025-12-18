@@ -1,138 +1,178 @@
-set.seed(123)
-library(MLmetrics)
 library(caret)
-library(recipes)
 library(dplyr)
+library(MLmetrics)
 
-data = dataAREG_final[-c(1,2)]
-data$Age2 = data$Age^2
-data$Age3 = data$Age^3
-data$Age4 = data$Age^4
+set.seed(123)
 
-dataAREG_test_final$Age2 = dataAREG_test_final$Age^2
-dataAREG_test_final$Age3 = dataAREG_test_final$Age^3
-dataAREG_test_final$Age4 = dataAREG_test_final$Age^4
-
-
-
-Index <- sample(1:nrow(data), size = nrow(data)*0.8)
-dataTrain <- data[Index, ]
-dataTest  <- data[-Index, ]
+# ==============================================================================
+# 1. FUNCIÓN PARA CREAR DUMMIES (Con R Base)
+# ==============================================================================
+convert_to_dummies <- function(df) {
+  # model.matrix es nativo de R. 
+  # "~ Geography + Gender - 1" significa: crea dummies para estas vars y quita el intercepto.
+  # El "-1" es importante para tener todas las categorías (one-hot) o evitar multicolinealidad perfecta
+  # dependiendo de si luego usas intercepto en el modelo, pero SVM lo maneja bien.
   
-  ######### PUNTO 2 ###########
-    # F1
-f1 <- function(data, lev = NULL, model = NULL) {
-    f1_val <- MLmetrics::F1_Score(y_pred = data$pred, y_true = data$obs, positive = "Yes")
-    c(F1 = f1_val)
+  dummies <- model.matrix(~ Geography + Gender - 1, data = df)
+  
+  # Convertimos a dataframe
+  df_dummies <- as.data.frame(dummies)
+  
+  # Convertimos HasCrCard e IsActiveMember a numérico (0 y 1) 
+  # (R a veces los lee como factores 1 y 2, esto lo corrige a 0 y 1 real)
+  if(is.factor(df$HasCrCard)) {
+    df$HasCrCard <- as.numeric(as.character(df$HasCrCard))
+  }
+  if(is.factor(df$IsActiveMember)) {
+    df$IsActiveMember <- as.numeric(as.character(df$IsActiveMember))
+  }
+  
+  # Unimos las dummies y quitamos las variables categóricas originales
+  df_final <- cbind(df, df_dummies)
+  df_final$Geography <- NULL
+  df_final$Gender <- NULL
+  
+  return(df_final)
 }
-  
-dataTrain$Exited <- factor(dataTrain$Exited, levels = c(0,1), labels = c("No", "Yes"))
-dataTest$Exited  <- factor(dataTest$Exited,  levels = c(0,1), labels = c("No", "Yes"))
-  
-control <- trainControl(
-    method = "repeatedcv",
-    number = 10,
-    repeats = 10,
-    classProbs = TRUE,
-    summaryFunction = f1,
-    verboseIter = TRUE
-  )
-  
-# 1. Carregar paquets necessaris
-library(caret)
-library(recipes)
-library(kernlab) # Per a SVM
-library(pROC)    # Per a la funció de resum prSummary (inclou F1)
 
-# 2. Assegurar la validesa dels noms dels nivells de la variable objectiu
-# "No" i "Yes" ja són vàlids, però aquest pas garanteix que la mètrica F1 funcioni
-# si hi hagués hagut problemes de noms (com en l'error anterior).
-levels(dataTrain$Exited) <- make.names(levels(dataTrain$Exited))
+# ==============================================================================
+# 2. PROCESO DE TRANSFORMACIÓN
+# ==============================================================================
 
-# 3. Definir la Recepta (Pipeline de Preprocessament)
+# A. Polinomios (Tal cual lo tenías)
+data$Age2 <- data$Age^2
+data$Age3 <- data$Age^3
+data$Age4 <- data$Age^4
 
-recepta <- 
-  recipe(Exited ~ ., data = dataTrain) %>%
-  
-  # A. Codificació de Categòriques (Geography, Gender, HasCrCard, IsActiveMember)
-  # step_dummy converteix tots els factors/nominals a variables 0/1 (One-Hot Encoding)
-  step_dummy(all_nominal_predictors(), one_hot = FALSE) %>% # one_hot = FALSE: crea k-1 columnes (evita multicolinealitat perfecta)
-  
-  # B. Normalització de Numèriques (CreditScore, Age, Age2, Age3, etc.)
-  # S'aplica a totes les variables que quedin i siguin numèriques (originals + dummies)
-  step_center(all_numeric_predictors()) %>%
-  step_scale(all_numeric_predictors())
+dataAREG_test_final$Age2 <- dataAREG_test_final$Age^2
+dataAREG_test_final$Age3 <- dataAREG_test_final$Age^3
+dataAREG_test_final$Age4 <- dataAREG_test_final$Age^4
 
-# 4. Definir el Control de l'Entrenament (incloent la mètrica F1)
+# B. Aplicar Dummies
+data_proc <- convert_to_dummies(data)
+data_kaggle_proc <- convert_to_dummies(dataAREG_test_final)
 
-# La funció 'prSummary' proporciona la mètrica F1.
-control_entrenament <- trainControl(
+# Asegurar mismas columnas (intersección) por si acaso
+common_cols <- setdiff(names(data_proc), "Exited") # Exited solo está en train
+data_kaggle_proc <- data_kaggle_proc[, common_cols]
+
+# ==============================================================================
+# 3. SPLIT Y ESCALADO MANUAL
+# ==============================================================================
+
+Index <- createDataPartition(data_proc$Exited, p = 0.8, list = FALSE)
+dataTrain <- data_proc[Index, ]
+dataTest  <- data_proc[-Index, ]
+
+vars_to_scale <- c("CreditScore", "Age", "Tenure", "Balance", "NumOfProducts", 
+                   "EstimatedSalary", "Age2", "Age3", "Age4")
+
+# Calcular medias y desviaciones SOLO en Train
+train_means <- sapply(dataTrain[, vars_to_scale], mean)
+train_sds   <- sapply(dataTrain[, vars_to_scale], sd)
+
+# Función simple de escalado
+manual_scale <- function(df, vars, means, sds) {
+  for (v in vars) {
+    df[[v]] <- (df[[v]] - means[v]) / sds[v]
+  }
+  return(df)
+}
+
+# Aplicar escalado
+dataTrain <- manual_scale(dataTrain, vars_to_scale, train_means, train_sds)
+dataTest  <- manual_scale(dataTest, vars_to_scale, train_means, train_sds)
+data_kaggle_proc <- manual_scale(data_kaggle_proc, vars_to_scale, train_means, train_sds)
+
+# ==============================================================================
+# 5. PREPARACIÓN PARA CARET (Target y F1)
+# ==============================================================================
+# Caret necesita factores válidos para nombres de variables (No 0/1, sino Yes/No)
+dataTrain$Exited <- factor(dataTrain$Exited, levels = c(0, 1), labels = c("No", "Yes"))
+dataTest$Exited  <- factor(dataTest$Exited, levels = c(0, 1), labels = c("No", "Yes"))
+
+# Tu función F1 personalizada
+f1_custom <- function(data, lev = NULL, model = NULL) {
+  f1_val <- MLmetrics::F1_Score(y_pred = data$pred, y_true = data$obs, positive = "Yes")
+  c(F1 = f1_val)
+}
+
+ctrl <- trainControl(
   method = "repeatedcv",
-  number = 5,          # 5-fold Cross-Validation
-  repeats = 3,         # Repetida 3 vegades
-  summaryFunction = f1, # Utilitza la funció que conté F1
-  classProbs = TRUE,   # Necessari per calcular probabilitats (i F1/AUC)
-  verboseIter = FALSE
+  number = 10,
+  repeats = 5, # Bajado a 5 por velocidad, sube a 10 si tienes tiempo
+  classProbs = TRUE,
+  summaryFunction = f1_custom, # Usamos tu función para maximizar F1 en el tuning
+  verboseIter = TRUE,
+  savePredictions = "final"
 )
 
-# 5. Definir la Malla de Tuning (mtry i C)
-
-# El Kernel Radial (svmRadial) té dos hiperparàmetres principals a optimitzar:
-# - C (Cost): Penalització per errors de classificació.
-# - sigma: Paràmetre de dispersió del kernel (controla la forma del límit de decisió).
-malla_radial <- expand.grid(
-  .C = c(0.25), # Prova diferents valors de Cost
-  .sigma = c(0.01) # Prova diferents valors de sigma
+# ==============================================================================
+# 6. ENTRENAMIENTO DEL MODELO (SVM Radial)
+# ==============================================================================
+# Grid de hiperparámetros (puedes ampliarlo)
+grid_svm <- expand.grid(
+  sigma = c(0.01, 0.05, 0.1),
+  C = c(0.1, 1, 10)
 )
 
-# 6. Entrenar el Model SVM Radial
-
+print("Entrenando SVM...")
 model_svm <- train(
-  recepta,                 # Li passem la recepta de preprocessament
-  data = dataTrain,        # Les dades originals
-  method = "svmRadial",    # Kernel de Funció de Base Radial (RBF)
-  metric = "F1",           # Utilitzem l'F1-score per seleccionar el millor model
-  tuneGrid = malla_radial, # La malla d'hiperparàmetres
-  trControl = control_entrenament
+  Exited ~ ., 
+  data = dataTrain,
+  method = "svmRadial",
+  trControl = ctrl,
+  metric = "F1",
+  tuneGrid = data.frame(C=0.1,sigma=0.01)
 )
 
-# 7. Inspeccionar els resultats
 print(model_svm)
-# Mostrar els resultats detallats de cada combinació C i sigma
-model_svm$results
 
-# El millor model es troba a:
-model_svm$bestTune
+# ==============================================================================
+# 7. OPTIMIZACIÓN DEL THRESHOLD (Umbral de decisión)
+# ==============================================================================
 
-pred = predict(model_svm, 
-                newdata = dataTest, 
-                type = "raw") 
+# 3. Optimitzem el Threshold usant les prediccions del CROSS-VALIDATION
+# Accedim a les prediccions internes del millor model
+cv_preds <- model_svm$pred
 
+# Busquem el millor tall sobre aquestes prediccions 'netes'
+thresholds <- seq(0.1, 0.9, by = 0.01)
+f1_scores_cv <- numeric(length(thresholds))
 
+for (i in seq_along(thresholds)) {
+  thresh <- thresholds[i]
+  # Compte: a model_svm$pred, la columna de probabilitat sol dir-se "Yes"
+  preds_class <- factor(ifelse(cv_preds$Yes > thresh, "Yes", "No"), levels = c("No", "Yes"))
+  # I la columna real es diu "obs"
+  f1_scores_cv[i] <- MLmetrics::F1_Score(y_true = cv_preds$obs, y_pred = preds_class, positive = "Yes")
+}
 
- # PARA KAGGLE
-# --- 1. Extreure la Recepta Correctament ---
+best_thresh <- thresholds[which.max(f1_scores_cv)]
+cat("Millor Threshold (estimat per CV):", best_thresh, "\n")
 
-# Si has entrenat amb la sintaxi 'train(recepta, ...)', la recepta finalitzada 
-# (que conté l'ajust de les mitjanes, desviacions i dummies) es guarda aquí:
-recepta_entrenada <- model_svm$recipe 
+# 4. AVALUACIÓ FINAL (Ara sí, toquem el Test per veure la realitat)
+# Aquest pas només és per saber quina nota treuries, NO per decidir res.
+probs_test <- predict(model_svm, newdata = dataTest, type = "prob")$Yes
+pred_test_class <- factor(ifelse(probs_test > best_thresh, "Yes", "No"), levels = c("No", "Yes"))
 
-# --- 2. Aplicar la Transformació al Test ---
+f1_final_test <- MLmetrics::F1_Score(y_true = dataTest$Exited, y_pred = pred_test_class, positive = "Yes")
+cat("F1 Real al Test Set (sense fer trampes):", f1_final_test, "\n")
+# ==============================================================================
+# 8. GENERAR SUBMISSION (Kaggle)
+# ==============================================================================
 
-# Ara 'recepta_entrenada' ja no és NULL i conté la informació necessària per 'bake()'.
-data_test_processada <- bake(recepta_entrenada, new_data = dataAREG_test_final)
+# 1. Predecir probabilidades sobre el set final arreglado
+probs_kaggle <- predict(model_svm, newdata = data_kaggle_proc, type = "prob")$Yes
 
-# --- 3. Predicció Final ---
+# 2. Aplicar el mejor threshold encontrado
+pred_kaggle_class <- ifelse(probs_kaggle > best_thresh, "Yes", "No") # Kaggle suele pedir 0/1
 
-# Si la teva data ja té les columnes correctament processades, la predicció funcionarà.
-pred_test <- predict(model_svm, 
-                     newdata = dataAREG_test_final, 
-                     type = "raw") 
-
-# --- 4. Generar Submission ---
+# 3. Crear dataframe
 submission <- data.frame(
-  ID = dataAREG_test_final$ID, 
-  Exited = pred_test
+  ID = dataAREG_test_final$ID, # Recuperamos el ID del original
+  Exited = pred_kaggle_class
 )
 
-write.csv(submission, "submission_arreglada.csv", row.names = FALSE)
+head(submission)
+write.csv(submission, "submission_svm_optimized.csv", row.names = FALSE)
